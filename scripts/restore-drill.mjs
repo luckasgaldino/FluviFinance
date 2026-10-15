@@ -4,6 +4,8 @@
 //   pnpm backup:drill                        exercício completo com fixtures fictícias
 //   pnpm backup:drill --backup <arq.enc>     restaura e verifica um backup existente (sem semear)
 //   --keep-container                         não remove o container restaurado ao final
+//   --tests a,b                              arquivos pgTAP a rodar (padrão: todos); use a versão de testes
+//                                            compatível com o schema do backup (ex.: backup anterior a uma migration)
 //
 // Etapas: semear fixtures → backup criptografado → container ISOLADO (sem Auth, sem
 // e-mail, sem Edge Functions) → decifrar e restaurar → comparar fotografias →
@@ -22,7 +24,7 @@ const RESTORE_PORT = 55433;
 const ROOT = resolve(import.meta.dirname, "..");
 
 const { values } = parseArgs({
-  options: { backup: { type: "string" }, "keep-container": { type: "boolean" } },
+  options: { backup: { type: "string" }, "keep-container": { type: "boolean" }, tests: { type: "string" } },
 });
 
 const report = { started_at: new Date().toISOString(), steps: [], result: "FAIL" };
@@ -142,8 +144,9 @@ function accessChecks() {
 
 function pgtapOnRestored() {
   const cli = join(ROOT, "node_modules", "supabase", "dist", "supabase.js");
+  const files = values.tests ? values.tests.split(",").map((t) => t.trim()) : [];
   const out = run(process.execPath, [cli, "test", "db", "--db-url",
-    `postgresql://postgres:postgres@127.0.0.1:${RESTORE_PORT}/postgres?sslmode=disable`], { allowFail: true });
+    `postgresql://postgres:postgres@127.0.0.1:${RESTORE_PORT}/postgres?sslmode=disable`, ...files], { allowFail: true });
   const text = out.stdout.toString() + out.stderr.toString();
   const tests = text.match(/Tests=(\d+)/)?.[1];
   if (out.status !== 0 || !/Result: PASS/.test(text)) {

@@ -429,7 +429,7 @@ Nenhum nome de endpoint é compromisso de rota física: Claude pode definir RPC/
 | E — Evoluções funcionais | PDF/imagens/OCR, IA externa opcional, anomalias, push, Excel/PDF export | Aceites por módulo, custos autorizados, validação de push em aparelho |
 | Futuro | Open Finance/integração bancária e app nativo | Novo assessment de provedor, requisitos regulatórios, custo e autorização |
 
-**Situação em 15/10/2026 (v1.2, H):** Marco A testado localmente, no CI e no hospedado de desenvolvimento, com pendências (SMTP próprio; homologação em iPhone/Safari, leitor de tela e texto ampliado). Marco B: **banco implementado e testado localmente e no CI**; **não aplicado ao `fluvi-dev`**; **telas não iniciadas**; **não homologado**. Detalhes em §20.16.
+**Situação em 15/10/2026 (v1.2, H):** Marco A testado localmente, no CI e no hospedado de desenvolvimento, com pendências (SMTP próprio; homologação em iPhone/Safari, leitor de tela e texto ampliado). Marco B: **banco implementado e testado localmente e no CI**; **aplicado ao `fluvi-dev` em 15/10/2026** (deploy controlado); **telas não iniciadas**; **não homologado**. Detalhes em §20.16.
 
 **Gate produção:** deve ser realizado para o escopo liberado *antes* de usar dados reais, não necessariamente após completar A-E. **O uso com dados financeiros reais depende também do item F3 (Marco D), mesmo que o gate de A e B esteja concluído.** Se A não cobre ainda restauração, monitoramento, recuperação de conta e políticas essenciais, permanecer em ambiente fictício. A separação de ambientes não transforma preview em ambiente de produção.
 
@@ -913,7 +913,7 @@ A matriz completa (INV-L1–L7, INV-C1–C11, INV-O1–O5, INV-R1–R5, INV-P1�
 |---|---|
 | Banco do Marco B | **implementado e testado localmente e no CI** |
 | Testes | 293 pgTAP · 52 de integração · 6 mutações detectadas · backup e restauração testados (pgTAP 293/293 no restaurado) · CI verde (execução 38779562228) |
-| `fluvi-dev` | Marco B **não aplicado** |
+| `fluvi-dev` | Marco B (banco) **aplicado em 15/10/2026** por deploy controlado, com pgTAP 310 no hospedado, teste remoto pela API e backup pré/pós verificados (`docs/evidencias/2026-10-15-marco-b-deploy-fluvi-dev.md`). Telas não publicadas |
 | Telas do Marco B | **não iniciadas** |
 | Homologação do Marco B | **pendente** |
 | Marco A | pendentes SMTP próprio e homologação em iPhone/Safari, leitor de tela e texto ampliado |

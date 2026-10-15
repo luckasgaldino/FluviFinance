@@ -7,7 +7,7 @@ Referência: Especificação v1.1, §4 (ambientes), §14 (custos) e §19.8 (D7).
 | Ambiente | Supabase | Frontend | Dados | Estado |
 |---|---|---|---|---|
 | Local | stack do CLI (portas 553xx) | Vite 127.0.0.1:5173 | fictícios | em uso |
-| **Desenvolvimento** | `fluvi-dev` (ref `wovocbnnpvsxndwjghco`, sa-east-1, Free, Postgres 17.11) | **https://fluvi-dev.pages.dev** (Cloudflare Pages, deploy pelo workflow `deploy-dev.yml`) | **somente fictícios** | migrations, Auth, Edge Function e frontend publicados e verificados |
+| **Desenvolvimento** | `fluvi-dev` (ref `wovocbnnpvsxndwjghco`, sa-east-1, Free, Postgres 17.11) | **https://fluvi-dev.pages.dev** (Cloudflare Pages, deploy pelo workflow `deploy-dev.yml`) | **somente fictícios** | Marco A completo + **banco do Marco B** (deploy controlado em 15/10/2026); jobs `pg_cron` ativos; frontend do Marco A |
 | Produção | **não criado**, por decisão de 15/10/2026 | — | reais, só após o gate §10 | criar perto do gate |
 
 O projeto de desenvolvimento **não recebe dados reais**. A separação de
