@@ -36,8 +36,17 @@ export async function expectNoHorizontalOverflow(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-// Login de usuário financeiro: espera a sessão estar estabelecida (tela inicial) antes de navegar.
+// Login de usuário financeiro: espera a sessão estar estabelecida (dashboard no desktop,
+// tela inicial discreta no celular) antes de navegar.
 export async function loginUser(page: Page, email: string, password: string) {
   await login(page, email, password);
-  await expect(page).toHaveURL(/\/inicio$/);
+  await expect(page).toHaveURL(/\/(painel|inicio)$/);
+}
+
+// Confirma a senha na tela "Área financeira protegida" (segunda barreira do celular).
+export async function unlockFinance(page: Page, password: string) {
+  await expect(page.getByRole("heading", { name: "Área financeira protegida", level: 1 })).toBeVisible();
+  await page.getByRole("form", { name: "Confirmar senha" }).getByLabel("Senha").fill(password);
+  await page.getByRole("button", { name: "Desbloquear" }).click();
+  await expect(page.getByRole("heading", { name: "Área financeira protegida", level: 1 })).toHaveCount(0);
 }

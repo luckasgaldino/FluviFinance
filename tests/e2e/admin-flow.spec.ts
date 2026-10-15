@@ -35,15 +35,17 @@ async function adminPage(browser: Browser, opts: { fakeClock?: boolean } = {}): 
   return page;
 }
 
-async function acceptInviteInBrowser(browser: Browser, email: string, name: string) {
+async function acceptInviteInBrowser(browser: Browser, email: string) {
   const page = await (await browser.newContext()).newPage();
   await page.goto(await waitForAuthLink(email, "invite"));
   await expect(page.getByRole("heading", { name: "Ative sua conta" })).toBeVisible();
   await page.getByLabel("Nova senha").fill(PASSWORD);
   await page.getByLabel("Confirme a senha").fill(PASSWORD);
   await page.getByRole("button", { name: "Salvar senha" }).click();
-  await expect(page).toHaveURL(/\/inicio$/);
-  await expect(page.getByRole("heading", { name: `Olá, ${name}` })).toBeVisible();
+  // senha recém-definida no desktop: o dashboard já abre liberado (v2.2 §3.1)
+  await expect(page).toHaveURL(/\/painel$/);
+  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
+  await expect(page.getByText(email)).toBeVisible();
   return page;
 }
 
@@ -102,21 +104,20 @@ test("Renovação do token não desmonta a página nem apaga formulário em edi�
   await expect(page).toHaveURL(/\/admin\/usuarios$/);
 });
 
-test("Convidados ativam a conta pelo link do e-mail e caem no início", async ({ browser }) => {
-  const luck = await acceptInviteInBrowser(browser, luckEmail, "Luck");
+test("Convidados ativam a conta pelo link do e-mail e caem no dashboard", async ({ browser }) => {
+  const luck = await acceptInviteInBrowser(browser, luckEmail);
   await expectAccessible(luck);
-  await expect(luck.getByText("Nenhuma permissão de leitura de outras pessoas")).toBeVisible();
-  await acceptInviteInBrowser(browser, biaEmail, "Bia");
+  await acceptInviteInBrowser(browser, biaEmail);
 });
 
 test("Usuário financeiro não acessa o painel administrativo", async ({ page }) => {
   await login(page, luckEmail, PASSWORD);
-  await expect(page).toHaveURL(/\/inicio$/);
+  await expect(page).toHaveURL(/\/painel$/);
   await page.goto("/admin/permissoes");
-  await expect(page).toHaveURL(/\/inicio$/);
+  await expect(page).toHaveURL(/\/painel$/);
 });
 
-test("Admin concede leitura Bia→Luck; Luck passa a ver Bia", async ({ browser }) => {
+test("Admin concede e revoga leitura Bia→Luck", async ({ browser }) => {
   const page = await adminPage(browser);
   await page.getByRole("link", { name: "Permissões" }).click();
   await expect(page.getByRole("heading", { name: "Permissões", level: 1 })).toBeVisible();
@@ -129,22 +130,17 @@ test("Admin concede leitura Bia→Luck; Luck passa a ver Bia", async ({ browser 
   await expect(page.getByRole("listitem", { name: "Bia para Luck" })).toContainText("revisão 1");
   await expectAccessible(page);
 
-  const luck = await (await browser.newContext()).newPage();
-  await login(luck, luckEmail, PASSWORD);
-  await expect(luck.getByRole("list", { name: "Pessoas com leitura de lançamentos permitida" })).toContainText("Bia");
-
-  // revogar pela interface corta o acesso
+  // revogar pela interface. O efeito no acesso é coberto no pgTAP (01_identity_isolation);
+  // a v2.2 descontinua permissões individuais em favor da família (fase R2).
   page.once("dialog", (d) => d.accept());
   await page.getByRole("listitem", { name: "Bia para Luck" }).getByRole("button", { name: "Revogar" }).click();
   await expect(page.getByText("Nenhuma permissão vigente neste núcleo.")).toBeVisible();
-  await luck.reload();
-  await expect(luck.getByText("Nenhuma permissão de leitura de outras pessoas")).toBeVisible();
 });
 
 test("Admin bloqueia Luck: sessão aberta cai e novo login é recusado", async ({ browser }) => {
   const luck = await (await browser.newContext()).newPage();
   await login(luck, luckEmail, PASSWORD);
-  await expect(luck).toHaveURL(/\/inicio$/);
+  await expect(luck).toHaveURL(/\/painel$/);
 
   const page = await adminPage(browser);
   page.once("dialog", (d) => d.accept());
@@ -152,7 +148,7 @@ test("Admin bloqueia Luck: sessão aberta cai e novo login é recusado", async (
   await expect(page.getByRole("listitem", { name: "Luck" })).toContainText("Bloqueado");
 
   await luck.reload();
-  await expect(luck).not.toHaveURL(/\/inicio$/);
+  await expect(luck).not.toHaveURL(/\/painel$/);
   await login(luck, luckEmail, PASSWORD);
   await expect(luck.getByRole("alert")).toHaveText("Conta bloqueada. Procure o administrador.");
 
@@ -175,14 +171,14 @@ test("Bia recupera a senha pelo e-mail", async ({ page }) => {
   await page.getByLabel("Nova senha").fill(`${PASSWORD}-novo`);
   await page.getByLabel("Confirme a senha").fill(`${PASSWORD}-novo`);
   await page.getByRole("button", { name: "Salvar senha" }).click();
-  await expect(page).toHaveURL(/\/inicio$/);
+  await expect(page).toHaveURL(/\/painel$/);
 
   await page.getByRole("button", { name: "Sair" }).click();
   await expect(page).toHaveURL(/\/entrar$/);
   await login(page, biaEmail, PASSWORD);
   await expect(page.getByRole("alert")).toHaveText("E-mail ou senha incorretos.");
   await login(page, biaEmail, `${PASSWORD}-novo`);
-  await expect(page).toHaveURL(/\/inicio$/);
+  await expect(page).toHaveURL(/\/painel$/);
 });
 
 test("Mesma resposta para e-mail inexistente (sem enumeração)", async ({ page }) => {

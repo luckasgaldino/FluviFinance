@@ -38,11 +38,13 @@ export function StatusBadge({ status, label }: { status: string; label: string }
   return <span className={`badge ${status}`}>{label}</span>;
 }
 
-export function Brand() {
+export function Brand({ compact = false }: { compact?: boolean }) {
+  const mark = <div className="brand"><img src="/favicon.svg" alt="" /><span>Fluvi<span className="accent">Fiance</span></span></div>;
+  if (compact) return mark;
   return (
     <div>
-      <div className="brand"><img src="/favicon.svg" alt="" />Fluvi</div>
-      <div className="tagline">Seu dinheiro em movimento. Seus planos em crescimento.</div>
+      {mark}
+      <div className="tagline">Finanças da família, simples e privadas.</div>
     </div>
   );
 }

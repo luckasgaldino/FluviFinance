@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router";
 import { Alert, Brand, Field, PageTitle } from "../components/ui";
 import { redirectTo } from "../lib/api";
 import { errorMessage } from "../lib/errors";
+import { noteLoginPassword } from "../lib/finance-lock";
 import { initialLink } from "../lib/initial-url";
 import { useSession } from "../lib/session";
 import { supabase } from "../lib/supabase";
@@ -37,6 +38,7 @@ export function Login() {
     });
     setBusy(false);
     if (error) return setError(errorMessage(error));
+    noteLoginPassword();
     navigate("/", { replace: true });
   }
 
@@ -139,6 +141,7 @@ export function SetPassword() {
       return setError(errorMessage(error));
     }
     // a ativação (pending → active) acontece no banco ao definir a senha
+    noteLoginPassword();
     await refresh();
     navigate("/", { replace: true });
   }

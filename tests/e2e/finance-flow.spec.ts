@@ -17,7 +17,7 @@ test.beforeAll(async () => {
 
 test("Contas: criar conta com saldo inicial", async ({ page }) => {
   await loginUser(page, owner, PASSWORD);
-  await page.getByRole("navigation").getByRole("link", { name: "Contas", exact: true }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Contas e saldos", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Contas", level: 1 })).toBeVisible();
   await expect(page.getByText("Nenhuma conta cadastrada")).toBeVisible();
   await expectAccessible(page);
@@ -56,7 +56,7 @@ test("Lançamentos: despesa reduz o saldo e aparece no extrato", async ({ page }
   await expect(page.getByRole("listitem", { name: "Mercado do mês" })).toContainText("−R$ 70,00");
   await expectAccessible(page);
 
-  await page.getByRole("navigation").getByRole("link", { name: "Contas", exact: true }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Contas e saldos", exact: true }).click();
   await expect(page.getByRole("listitem", { name: "Banco E2E" })).toContainText("R$ 930,00");
   await page.getByRole("link", { name: "Banco E2E" }).click();
   accountUrl = page.url();
@@ -103,7 +103,7 @@ test("Reversão: receita devolvida entra como movimento real contrário", async 
   await expect(item).toContainText("Revertido");
   await expect(page.getByRole("listitem", { name: "Reversão: Freela" })).toBeVisible();
 
-  await page.getByRole("navigation").getByRole("link", { name: "Contas", exact: true }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Contas e saldos", exact: true }).click();
   await expect(page.getByRole("listitem", { name: "Banco E2E" })).toContainText("R$ 1.000,00");
 });
 

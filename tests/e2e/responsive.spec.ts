@@ -1,7 +1,7 @@
-// §3.4 — 360 CSS px sem overflow horizontal, com acessibilidade, nas telas do Marco A.
+// 360 CSS px sem overflow horizontal, com acessibilidade (v2.2: tela discreta, menu em gaveta, áreas protegidas).
 import { expect, test } from "@playwright/test";
 import {
-  createActiveUser, expectAccessible, expectNoHorizontalOverflow, freshTotp, login, PASSWORD, runId, sql, testEmail,
+  createActiveUser, expectAccessible, expectNoHorizontalOverflow, freshTotp, login, PASSWORD, sql, testEmail, unlockFinance,
 } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
@@ -16,7 +16,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await sql("delete from auth.users where email like $1", [`%.${runId}@fluvi.test`]);
+  // só as identidades desta suíte (sem histórico financeiro); outras suítes da rodada têm razão
+  await sql("delete from auth.users where email = any($1)", [[userEmail, adminEmail]]);
 });
 
 for (const path of ["/entrar", "/esqueci-senha", "/definir-senha", "/bloqueada"]) {
@@ -28,18 +29,33 @@ for (const path of ["/entrar", "/esqueci-senha", "/definir-senha", "/bloqueada"]
   });
 }
 
-test("início do usuário cabe em 360 px", async ({ page }) => {
+test("início discreto, lançamento rápido, configurações e menu cabem em 360 px", async ({ page }) => {
   await login(page, userEmail, PASSWORD);
   await expect(page).toHaveURL(/\/inicio$/);
   await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
+  for (const [path, heading] of [["/novo", "Novo lançamento"], ["/configuracoes", "Configurações"]]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await expectAccessible(page);
+  }
+  await page.getByRole("button", { name: "Abrir menu" }).click();
+  await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectAccessible(page);
 });
 
-test("telas financeiras (Contas, Lançamentos, Cartões, Compras) cabem em 360 px", async ({ page }) => {
+test("telas financeiras cabem em 360 px (após o desbloqueio)", async ({ page }) => {
   await login(page, userEmail, PASSWORD);
   await expect(page).toHaveURL(/\/inicio$/);
-  for (const [path, heading] of [["/contas", "Contas"], ["/lancamentos", "Lançamentos"], ["/lancamentos/novo", "Novo lançamento"],
-    ["/cartoes", "Cartões"], ["/cartoes/compra", "Nova compra no cartão"]]) {
+  await page.goto("/painel");
+  await expectNoHorizontalOverflow(page);
+  await expectAccessible(page);
+  await unlockFinance(page, PASSWORD);
+  for (const [path, heading] of [["/painel", "Visão geral"], ["/contas", "Contas"], ["/lancamentos", "Lançamentos"],
+    ["/lancamentos/novo", "Novo lançamento"], ["/cartoes", "Cartões"], ["/cartoes/compra", "Nova compra no cartão"],
+    ["/parcelas", "Parcelas"], ["/relatorios", "Relatórios"]]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
     await expectNoHorizontalOverflow(page);
@@ -57,7 +73,8 @@ test("painel administrativo cabe em 360 px", async ({ page }) => {
 
   for (const [link, heading] of [["Usuários", "Usuários"], ["Núcleos e vínculos", "Núcleos e vínculos"],
     ["Permissões", "Permissões"], ["Auditoria", "Auditoria"]]) {
-    await page.getByRole("link", { name: link }).click();
+    await page.getByRole("button", { name: "Abrir menu" }).click();
+    await page.getByRole("dialog", { name: "Menu" }).getByRole("link", { name: link }).click();
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectAccessible(page);

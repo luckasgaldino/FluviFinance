@@ -1,94 +1,148 @@
-// Layouts autenticados e a tela inicial do usuário financeiro (Marco A).
-import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { Link, NavLink, Outlet } from "react-router";
-import { Alert, Brand, PageTitle } from "../components/ui";
-import { rpc } from "../lib/api";
+// Layouts autenticados (v2.2 §3): sidebar expandida no desktop; no celular, cabeçalho discreto
+// com menu hambúrguer e gaveta lateral, sem barra inferior. O menu abre sem senha; o conteúdo
+// das áreas financeiras só aparece depois do desbloqueio (RequireUnlock).
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
+import {
+  IconCard, IconChart, IconClose, IconHome, IconLayers, IconLock, IconLogout, IconMenu, IconPlus, IconReport,
+  IconSettings, IconShield, IconUnlock, IconUsers, IconList, IconWallet,
+} from "../components/icons";
+import { Brand } from "../components/ui";
+import { DEMO_FAMILY } from "../lib/demo";
+import { useIsDesktop } from "../lib/device";
+import { useFinanceLock } from "../lib/finance-lock";
 import { useSession } from "../lib/session";
 
-function Shell({ nav, children }: { nav: { to: string; label: string }[]; children: ReactNode }) {
+type NavItem = { to: string; label: string; icon: ReactNode; protected?: boolean; mobileOnly?: boolean };
+
+export const userNav: NavItem[] = [
+  { to: "/inicio", label: "Início", icon: <IconHome />, mobileOnly: true },
+  { to: "/painel", label: "Visão geral", icon: <IconChart />, protected: true },
+  { to: "/lancamentos", label: "Lançamentos", icon: <IconList />, protected: true },
+  { to: "/contas", label: "Contas e saldos", icon: <IconWallet />, protected: true },
+  { to: "/cartoes", label: "Cartões e faturas", icon: <IconCard />, protected: true },
+  { to: "/parcelas", label: "Parcelas", icon: <IconLayers />, protected: true },
+  { to: "/relatorios", label: "Relatórios", icon: <IconReport />, protected: true },
+  { to: "/configuracoes", label: "Configurações", icon: <IconSettings /> },
+];
+
+const adminNav: NavItem[] = [
+  { to: "/admin/usuarios", label: "Usuários", icon: <IconUsers /> },
+  { to: "/admin/nucleos", label: "Núcleos e vínculos", icon: <IconHome /> },
+  { to: "/admin/permissoes", label: "Permissões", icon: <IconShield /> },
+  { to: "/admin/auditoria", label: "Auditoria", icon: <IconReport /> },
+];
+
+function NavList({ items, locked, onPick }: { items: NavItem[]; locked: boolean; onPick?: () => void }) {
+  return (
+    <nav className="nav" aria-label="Navegação principal">
+      {items.map((n) => (
+        <NavLink key={n.to} to={n.to} className="nav-link" onClick={onPick}>
+          {n.icon}
+          <span>{n.label}</span>
+          {n.protected && locked && (
+            <span className="lock-mark"><IconLock /><span className="visually-hidden">(protegido)</span></span>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+// Ao ir para segundo plano, cobre a tela (melhor esforço para a prévia do alternador de apps).
+function PrivacyVeil() {
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    const onChange = () => setHidden(document.visibilityState === "hidden");
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, []);
+  if (!hidden) return null;
+  return <div className="privacy-veil" aria-hidden="true"><Brand compact /></div>;
+}
+
+function Shell({ nav, family, children }: { nav: NavItem[]; family?: boolean; children: ReactNode }) {
   const { session, signOut } = useSession();
+  const { unlocked, lock } = useFinanceLock();
+  const desktop = useIsDesktop();
+  const drawer = useRef<HTMLDialogElement>(null);
+  const location = useLocation();
+  const items = desktop ? nav.filter((n) => !n.mobileOnly) : nav;
+  const financial = nav.some((n) => n.protected);
+
+  // Fecha a gaveta ao trocar de rota.
+  useEffect(() => { drawer.current?.close(); }, [location.pathname]);
+
+  const foot = (
+    <div className="sidebar-foot">
+      <span className="who">{session?.user.email}</span>
+      {financial && unlocked && (
+        <button className="nav-link" type="button" onClick={() => { lock(); drawer.current?.close(); }}>
+          <IconLock /><span>Bloquear área financeira</span>
+        </button>
+      )}
+      <button className="nav-link" type="button" onClick={signOut}><IconLogout /><span>Sair</span></button>
+    </div>
+  );
+
+  const familyChip = family && (
+    <div className="family-chip">
+      <span className="label">Família ativa</span>
+      <strong>{DEMO_FAMILY}</strong>
+    </div>
+  );
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <Brand />
-        <nav aria-label="Navegação principal">
-          {nav.map((n) => <NavLink key={n.to} to={n.to} className="nav-link">{n.label}</NavLink>)}
-        </nav>
-      </aside>
-      <div className="main">
-        <header className="topbar">
-          <span className="who">{session?.user.email}</span>
-          <button className="btn secondary" type="button" onClick={signOut}>Sair</button>
-        </header>
-        <main>{children}</main>
-      </div>
+      <PrivacyVeil />
+      {desktop ? (
+        <aside className="sidebar" aria-label="Menu lateral">
+          <Brand compact />
+          {familyChip}
+          {financial && <Link className="btn gradient block" to="/novo"><IconPlus />Novo lançamento</Link>}
+          <NavList items={items} locked={!unlocked} />
+          {foot}
+        </aside>
+      ) : (
+        <>
+          <header className="topbar">
+            <button className="icon-btn" type="button" aria-label="Abrir menu" aria-haspopup="dialog"
+              onClick={() => drawer.current?.showModal()}>
+              <IconMenu />
+            </button>
+            <Brand compact />
+            <span className="spacer" />
+            {financial && unlocked && (
+              <button className="icon-btn" type="button" onClick={lock} aria-label="Bloquear área financeira">
+                <IconUnlock />
+              </button>
+            )}
+          </header>
+          <dialog ref={drawer} className="drawer" aria-label="Menu"
+            onClick={(e) => { if (e.target === drawer.current) drawer.current.close(); }}>
+            <div className="drawer-inner">
+              <div className="drawer-head">
+                <Brand compact />
+                <button className="icon-btn" type="button" aria-label="Fechar menu" onClick={() => drawer.current?.close()}>
+                  <IconClose />
+                </button>
+              </div>
+              {familyChip}
+              <NavList items={items} locked={!unlocked} onPick={() => drawer.current?.close()} />
+              {foot}
+            </div>
+          </dialog>
+        </>
+      )}
+      <main className="main">{children}</main>
     </div>
   );
 }
 
 export function AdminLayout() {
-  return (
-    <Shell nav={[
-      { to: "/admin/usuarios", label: "Usuários" },
-      { to: "/admin/nucleos", label: "Núcleos e vínculos" },
-      { to: "/admin/permissoes", label: "Permissões" },
-      { to: "/admin/auditoria", label: "Auditoria" },
-    ]}>
-      <Outlet />
-    </Shell>
-  );
+  return <Shell nav={adminNav}><Outlet /></Shell>;
 }
 
 export function UserLayout() {
-  return (
-    <Shell nav={[
-      { to: "/inicio", label: "Início" },
-      { to: "/contas", label: "Contas" },
-      { to: "/lancamentos", label: "Lançamentos" },
-      { to: "/cartoes", label: "Cartões" },
-      { to: "/seguranca/mfa", label: "Segurança" },
-    ]}>
-      <Outlet />
-    </Shell>
-  );
-}
-
-type Owner = { owner_user_id: string; display_name: string; is_self: boolean };
-
-export function Home() {
-  const { me, session } = useSession();
-  const owners = useQuery({
-    queryKey: ["accessible-owners", session?.user.id],
-    queryFn: () => rpc<Owner[]>("accessible_owners", { p_scope: "transactions", p_operation: "read" }),
-  });
-  const self = owners.data?.find((o) => o.is_self);
-  const others = owners.data?.filter((o) => !o.is_self) ?? [];
-
-  return (
-    <>
-      <PageTitle>Olá{self ? `, ${self.display_name}` : ""}</PageTitle>
-      <section className="card stack" aria-labelledby="acesso">
-        <h2 id="acesso">Quem você acompanha</h2>
-        <p className="muted">
-          Você sempre vê os seus próprios dados. Dados de outras pessoas do núcleo só
-          aparecem quando o administrador concede permissão.
-        </p>
-        {owners.isLoading ? <p role="status">Carregando…</p> : others.length === 0 ? (
-          <p className="empty">Nenhuma permissão de leitura de outras pessoas no momento.</p>
-        ) : (
-          <ul className="list" aria-label="Pessoas com leitura de lançamentos permitida">
-            {others.map((o) => <li key={o.owner_user_id} className="list-item">{o.display_name}</li>)}
-          </ul>
-        )}
-      </section>
-      <section className="card stack" aria-labelledby="proximos">
-        <h2 id="proximos">Em breve</h2>
-        <Alert kind="info">Contas, lançamentos e cartões já estão disponíveis. Faturas, contas a pagar e transferências chegam nas próximas etapas.</Alert>
-        <div className="row" style={{ alignItems: "center" }}><Link className="btn" to="/lancamentos/novo">Novo lançamento</Link><Link to="/contas">Ver contas</Link></div>
-        {me && <p className="muted">Situação da conta: ativa.</p>}
-        <Link to="/seguranca/mfa">Configurar verificação em duas etapas</Link>
-      </section>
-    </>
-  );
+  return <Shell nav={userNav} family><Outlet /></Shell>;
 }

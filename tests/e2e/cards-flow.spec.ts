@@ -23,7 +23,7 @@ const position = (page: Page, label: string) =>
 
 test("Cartões: dígitos inválidos são recusados e o cartão é criado", async ({ page }) => {
   await loginUser(page, owner, PASSWORD);
-  await nav(page, "Cartões");
+  await nav(page, "Cartões e faturas");
   await expect(page.getByText("Nenhum cartão cadastrado.")).toBeVisible();
   await page.getByRole("button", { name: "Novo cartão" }).click();
   await page.getByLabel("Nome do cartão").fill("Visa E2E");
