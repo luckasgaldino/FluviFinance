@@ -56,4 +56,5 @@ pnpm --filter @fluvi/tests test:remote                         # Auth hospedado 
 - [x] `site_url` e redirects do dev apontam para https://fluvi-dev.pages.dev (`[remotes.fluvi-dev]` no config.toml).
 - [x] CORS da Edge Function: só https://fluvi-dev.pages.dev e o Vite local. Origem estranha não recebe `Access-Control-Allow-Origin` (verificado).
 - [x] Cabeçalhos no domínio publicado: CSP, HSTS, X-Frame-Options DENY, Referrer-Policy (verificado com curl).
-- [ ] Confirmar a criação do bucket R2 `fluvi-backups-dev` e da regra de expiração de 35 dias (o log do deploy não mostrou a saída).
+- [x] Bucket R2 privado `fluvi-backups-dev` criado pelo deploy, com regra `expira-35-dias` (verificado no log de 15/10/2026). R2 ativado pelo responsável com cartão cadastrado; uso esperado dentro da faixa gratuita.
+- [ ] **LGPD (gate §10.1 item 8):** o bucket fica na América do Norte (WNAM; o R2 não tem região na América do Sul). Os backups saem cifrados com AES-256-GCM e a chave nunca vai ao Cloudflare. Avaliar a transferência internacional antes de dados reais.
