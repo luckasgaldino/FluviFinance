@@ -38,7 +38,8 @@ jobs:
       - name: Build (aponta para o Supabase fluvi-dev)
         env:
           VITE_SUPABASE_URL: https://wovocbnnpvsxndwjghco.supabase.co
-          VITE_SUPABASE_ANON_KEY: ${{ vars.FLUVI_DEV_ANON_KEY }}
+          # chave anon (role=anon): pública por definição, vai no bundle; RLS protege os dados
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indvdm9jYm5ucHZzeG5kd2pnaGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNzEzNTgsImV4cCI6MjEwNzY0NzM1OH0.sTJKxbyeh6tjU4PkbAsvWJOv66pDwburNqkvCmiWDKU
         run: pnpm web:build
 
       - name: Projeto Pages e bucket R2 (idempotente)
