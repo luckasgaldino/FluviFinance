@@ -30,7 +30,7 @@ jobs:
       - name: Lint do schema
         run: pnpm db:lint
 
-      - name: Testes unitários (domínio: dinheiro e datas)
+      - name: "Testes unitários (domínio: dinheiro e datas)"
         run: pnpm test:unit
 
       - name: Typecheck e build do frontend
