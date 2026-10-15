@@ -1,7 +1,7 @@
 name: Deploy fluvi-dev (Cloudflare Pages)
 
 # Publica o frontend de DESENVOLVIMENTO e garante o bucket R2 privado de backups.
-# Inerte até existirem: segredo CLOUDFLARE_API_TOKEN e variável CLOUDFLARE_ACCOUNT_ID.
+# Requer o segredo CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID (aceito como variável ou segredo).
 # A URL e a chave anon do Supabase são públicas por definição (vão no bundle);
 # nenhuma chave service_role é usada aqui.
 
@@ -20,13 +20,16 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ vars.CLOUDFLARE_ACCOUNT_ID != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
+      - name: Credenciais presentes
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::falta o segredo CLOUDFLARE_API_TOKEN"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::falta CLOUDFLARE_ACCOUNT_ID (variável ou segredo)"; exit 1; }
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
