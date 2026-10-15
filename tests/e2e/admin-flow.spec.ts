@@ -67,16 +67,19 @@ test("Admin sem MFA é obrigado a cadastrar TOTP antes de administrar", async ({
 test("Admin cria núcleo e convida Luck e Bia; contas ficam pendentes", async ({ browser }) => {
   const page = await adminPage(browser);
   await page.getByRole("link", { name: "Núcleos e vínculos" }).click();
+  await expect(page.getByRole("heading", { name: "Núcleos e vínculos", level: 1 })).toBeVisible();
   await page.getByLabel("Nome do núcleo").fill(householdName);
   await page.getByRole("button", { name: "Criar" }).click();
   await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
   await expectAccessible(page);
 
   await page.getByRole("link", { name: "Usuários" }).click();
+  // espera a navegação: "Nome" também casaria com "Nome do núcleo" da página anterior
+  await expect(page.getByRole("heading", { name: "Usuários", level: 1 })).toBeVisible();
   for (const [name, email] of [["Luck", luckEmail], ["Bia", biaEmail]]) {
-    await page.getByLabel("Nome").fill(name);
+    await page.getByLabel("Nome", { exact: true }).fill(name);
     await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Núcleo").selectOption({ label: householdName });
+    await page.getByLabel("Núcleo", { exact: true }).selectOption({ label: householdName });
     await page.getByRole("button", { name: "Enviar convite" }).click();
     await expect(page.getByText("Convite enviado")).toBeVisible();
     await expect(page.getByRole("listitem", { name })).toContainText("Pendente");
@@ -89,13 +92,13 @@ test("Admin cria núcleo e convida Luck e Bia; contas ficam pendentes", async ({
 test("Renovação do token não desmonta a página nem apaga formulário em edição", async ({ browser }) => {
   const page = await adminPage(browser, { fakeClock: true });
   const token = () => page.evaluate(() => JSON.parse(localStorage.getItem("fluvi.auth")!).access_token as string);
-  await page.getByLabel("Nome").fill("Rascunho em edição");
+  await page.getByLabel("Nome", { exact: true }).fill("Rascunho em edição");
   const before = await token();
 
   await page.clock.fastForward("59:30"); // perto do vencimento (jwt_expiry 3600 s): o SDK renova
   await expect.poll(token, { timeout: 30_000 }).not.toBe(before);
 
-  await expect(page.getByLabel("Nome")).toHaveValue("Rascunho em edição");
+  await expect(page.getByLabel("Nome", { exact: true })).toHaveValue("Rascunho em edição");
   await expect(page).toHaveURL(/\/admin\/usuarios$/);
 });
 
@@ -116,7 +119,8 @@ test("Usuário financeiro não acessa o painel administrativo", async ({ page })
 test("Admin concede leitura Bia→Luck; Luck passa a ver Bia", async ({ browser }) => {
   const page = await adminPage(browser);
   await page.getByRole("link", { name: "Permissões" }).click();
-  await page.getByLabel("Núcleo").selectOption({ label: householdName });
+  await expect(page.getByRole("heading", { name: "Permissões", level: 1 })).toBeVisible();
+  await page.getByLabel("Núcleo", { exact: true }).selectOption({ label: householdName });
   await page.getByLabel("Titular dos dados").selectOption({ label: "Bia" });
   await page.getByLabel("Quem recebe a permissão").selectOption({ label: "Luck" });
   await page.getByLabel("Escopo").selectOption({ label: "Lançamentos" });
@@ -153,6 +157,7 @@ test("Admin bloqueia Luck: sessão aberta cai e novo login é recusado", async (
   await expect(luck.getByRole("alert")).toHaveText("Conta bloqueada. Procure o administrador.");
 
   await page.getByRole("link", { name: "Auditoria" }).click();
+  await expect(page.getByRole("heading", { name: "Auditoria", level: 1 })).toBeVisible();
   await expect(page.getByRole("list", { name: "Eventos de auditoria" })).toContainText("Perfil · update");
   await expectAccessible(page);
 });

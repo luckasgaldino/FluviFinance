@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:remote": "vitest run --config vitest.remote.config.ts"
   },
   "devDependencies": {
     "@supabase/supabase-js": "2.117.2",
