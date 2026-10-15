@@ -1,6 +1,6 @@
-# Marco B — Proposta técnica revisada (rev. 2)
+# Marco B — Proposta técnica (rev. 3, aprovada para implementação)
 
-- **Estado:** revisão 2. Estrutura geral aprovada; ajustes da avaliação de 15/10/2026 incorporados. **Nada está implementado.**
+- **Estado:** rev. 3. Decisões MB-01 a MB-18 aprovadas como direcionamento arquitetural, com os ajustes finais da **§17 (adendo rev. 3), que prevalece sobre as seções anteriores**. Início das migrations e dos testes autorizado; a implementação segue sujeita à revisão de resultados e à homologação.
 - **Base:** Especificação v1.1 (§6, §7.1–7.8, §8 FIN-02 a FIN-05, §11, §13) + avaliação da rev. 1.
 - **Escopo:** só Marco B. **Não** antecipa BI, IA nem PWA. A conciliação com extratos (Marco D) entra só como ponto de extensão (campos e estados), sem importação.
 - **Dados reais:** esta aprovação **não autoriza** dados financeiros reais. A homologação do Marco A e o gate §10 continuam obrigatórios. Toda execução usa dados fictícios.
@@ -435,7 +435,7 @@ Mecanismos:
 | MB-08 | **revisada**: crédito no ciclo aberto, excedente não aplicado consumido pelos ciclos seguintes; não cancela parcelas |
 | MB-09 | **revisada**: anulação (compensação na data da origem) × reversão (movimento real na data do evento) |
 | **MB-16** (nova) | razão somente-acréscimo e bitemporal (`posted_on` + `recorded_at`) |
-| **MB-17** (nova) | consumo de conta a pagar reconhecido por pagamento, na competência da obrigação |
+| **MB-17** | **substituída na rev. 3 (§17.6):** despesa de conta a pagar reconhecida na competência da obrigação; pagamento só afeta o caixa |
 | **MB-18** (nova) | divergência entre fatura informada e calculada é registrada, nunca compensada automaticamente |
 
 ## 16. Próximos passos (após validação desta revisão)
@@ -444,3 +444,150 @@ Mecanismos:
 2. Testes O1–O35 (pgTAP e integração concorrente) e varreduras de catálogo (INV-P1 a P3), escritos **antes** das telas e validados por mutação.
 3. Telas e E2E de contas, cartões, lançamentos, faturas e pagamentos.
 4. Evidência por FIN-02 a FIN-05. Tudo com dados **fictícios**.
+
+---
+
+## 17. Adendo rev. 3 — ajustes finais (normativo; prevalece sobre §1–§16)
+
+Avaliação de 15/10/2026: MB-01 a MB-18 aprovadas como direcionamento, com os seis ajustes abaixo. Ficam
+mantidos: razão somente-acréscimo, regras de segurança do Marco A, escopo sem BI, IA, importação ou PWA,
+e **nenhum dado real**.
+
+### 17.1 Conciliação do cartão (formal)
+
+**Itens de ciclo.** Toda fatura é a soma de itens; nada fora deles altera o valor de um ciclo:
+
+| Item | Sinal na fatura | Origem |
+|---|---|---|
+| parcela válida (`installments.status = 'valid'`) | + | compra ou ajuste de parcelas |
+| encargo de reversão de crédito (`cycle_charges`) | + | reversão de estorno (§17.3) |
+| aplicação de crédito ativa (`credit_applications.status = 'active'`) | − | estorno no cartão |
+
+`valor(c) = Σ parcelas válidas(c) + Σ encargos(c) − Σ aplicações ativas(c)`, com `valor(c) ≥ 0` (INV-C7).
+
+**Crédito não aplicado** do crédito k: `U(k) = valor(k) − Σ aplicações ativas(k) − parte da reversão absorvida de U(k)`; `U = Σ U(k) ≥ 0`.
+
+**Equação de conciliação (EQ-1), por cartão:**
+
+```
+−Σ razão(conta do cartão) = Σ_{c fechado|pago} ( valor(c) − pago(c) )    ← obrigações restantes
+                           + Σ_{c aberto|futuro} valor(c)                  ← prévia + parcelas futuras
+                           − U                                              ← créditos não aplicados
+```
+
+**Por que não há dupla contagem:**
+- **(a) Pagamento** só referencia a obrigação de um ciclo **fechado**. Entra uma vez no razão (+v no cartão) e uma vez em `pago(c)`, nunca em `valor(c)`.
+- **(b) Crédito** está em **exatamente um** lugar: aplicado (dentro de algum `valor(c)`) ou em `U`. O razão o registra uma única vez (+v).
+- **(c) Ciclo fechado é congelado:** `obligations.original_amount = valor(c)` no fechamento. Itens de ciclo fechado ou pago não mudam (INV-C4/C5), então a igualdade vale para sempre (INV-C9).
+- **(d) Estorno em conta de caixa** nunca toca o cartão. **Estorno no cartão** sempre cria crédito. Não existe crédito no razão sem `card_credits` correspondente, nem o contrário (INV-C10).
+
+**Verificação:** `private.card_reconciliation(cartão)` devolve `divida_razao`, `divida_decomposta` e `diferenca`. Todo teste de cartão confere `diferenca = 0` (INV-C3). O cenário O36 encadeia compra parcelada, estorno com excedente, pagamento parcial, reversão do estorno, ajuste de parcelas e anulação, e confere EQ-1 **após cada passo**.
+
+### 17.2 Jobs: rollback completo e falha persistente
+
+- Os jobs são **procedures** executadas por `CALL` e agendadas por `pg_cron` 1.6.4 (disponível no Free e no local, verificado em 15/10/2026):
+  1. `INSERT job_runs(status = 'running')` e **`COMMIT`**: o registro de início sobrevive a qualquer falha posterior;
+  2. o trabalho financeiro roda num bloco `BEGIN … EXCEPTION` (subtransação). Em erro, **todas** as alterações financeiras daquela execução são desfeitas (rollback ao savepoint);
+  3. o registro de falha (`status = 'failed'`, erro sanitizado) é gravado **fora** da subtransação revertida e efetivado com `COMMIT` próprio;
+  4. se o processo morrer antes do passo 3 (timeout, queda), o `running` permanece, e a execução seguinte o marca `abandoned` (`started_at` com mais de 30 min). Nenhuma falha depende de ser gravada na transação revertida.
+- Trava consultiva por job impede execuções concorrentes (INV-J1).
+- O teste de falha usa um *failpoint* (`fluvi.failpoint = '<job>'`), que só tem efeito para quem pode executar o job (serviço ou `postgres`).
+- Procedures com `COMMIT` não rodam dentro da transação do pgTAP. Por isso os testes de jobs ficam na integração, com conexões reais.
+
+### 17.3 Reversão e anulação de créditos (estornos no cartão)
+
+**Reversão** (o banco desfez o estorno), na data real:
+1. razão: cartão `−v` (`reversal`);
+2. a absorção acontece nesta ordem, sem tocar ciclos fechados ou pagos:
+   1. consome o **não aplicado** do crédito (`U(k)`);
+   2. **libera** aplicações ativas em ciclos **aberto ou futuros**, da mais futura para a aberta (`status = 'released'`, nunca apagadas);
+   3. o restante, que corresponde a aplicações em ciclos **fechados ou pagos**, vira **encargo de reversão** (`cycle_charges`) no ciclo **aberto** atual. O histórico liquidado fica intacto, e a dívida reaparece na próxima fatura.
+3. EQ-1 continua valendo em cada etapa (O39).
+
+**Anulação** (estorno lançado por engano), com compensação na data original:
+- permitida só se o crédito **não** tiver aplicação em ciclo fechado ou pago (INV-R3). Nesse caso libera todas as aplicações e o não aplicado;
+- se houver aplicação em ciclo fechado ou pago → **recusada**. O caminho é a reversão.
+
+### 17.4 Ajuste de parcelas
+
+- **Preservadas:** parcelas em ciclos `closed` ou `paid` (já faturadas ou liquidadas). Nunca mudam.
+- **Elegíveis:** só parcelas válidas em ciclos `open` ou futuros, **sem obrigação**.
+- **Recusa** (a operação inteira, sem gravar nada) se:
+  - Σ preservadas + Σ novas ≠ novo total;
+  - novo total < Σ preservadas;
+  - algum ciclo elegível terminar com aplicações de crédito > débitos;
+  - Σ estornos ativos > novo total;
+  - a compra estiver anulada;
+  - algum ciclo elegível tiver obrigação.
+- `Δ = novo total − total anterior` gera `installment_adjustment` (±Δ) no cartão. EQ-1, INV-C1 e INV-C9 são conferidas ao fim da RPC.
+- Ordem de travas: cartão → ciclos (por data) → compra → créditos → obrigações (O34).
+
+### 17.5 Bitemporalidade explícita
+
+| Eixo | Campo | Quem define | Significado |
+|---|---|---|---|
+| **data financeira** | `ledger_entries.posted_on` (`date`) | a operação (data da compra, do pagamento, do estorno) | quando o fato afeta o patrimônio |
+| **instante de conhecimento** | `ledger_entries.recorded_at` (`timestamptz`) | **o banco**, via `clock_timestamp()` em gatilho; o cliente não informa | quando o sistema passou a saber |
+
+- `account_balance(conta, data_financeira, conhecido_em default now())` = abertura + Σ lançamentos com `posted_on` em (`opening_date`, `data_financeira`] e `recorded_at ≤ conhecido_em`.
+- Na anulação, a compensação tem o **mesmo** `posted_on` e `recorded_at` posterior. Por isso a mesma data financeira dá respostas diferentes conforme o momento de conhecimento (O37).
+- A abertura (`opening_balance_cents`, `opening_date`) fica imutável depois do primeiro lançamento da conta.
+- Limitação do B: estados de ciclo e obrigação não são bitemporais. A trilha deles fica em `audit_events`.
+
+### 17.6 Competência × liquidação (MB-17 substituída)
+
+**Nova MB-17:** a despesa de uma conta a pagar é **reconhecida na competência da obrigação**, independentemente do pagamento.
+
+| Fato | Consumo (competência) | Caixa (data financeira) |
+|---|---|---|
+| obrigação `bill` ativa de R$ A, competência C | **+A em C** desde a criação; ajustes ±; cancelamento → 0 | — |
+| pagamento de `bill` (`bill_payment`) | **nenhum** | −v na data do pagamento |
+| `card_purchase` | +total na competência (± ajustes, − estornos) | — |
+| pagamento de fatura | nenhum | −v |
+| `expense` direta (débito, Pix, dinheiro) | +v na competência | −v |
+| `receivable` | **nenhum** até liquidar (§7.8: previsão não é receita) | — |
+| recebimento (`income`) | receita realizada | +v |
+
+**Componentes separados** (`private.competence_summary(titular, mês)`, verificação interna, **sem** tela de BI no B):
+- `reconhecido_pago`;
+- `reconhecido_a_pagar` (competência ≤ mês corrente, ainda não pago);
+- `previsto_futuro` (competência posterior ao mês corrente);
+- `receita_prevista`, à parte.
+
+Pagamento parcial ou integral só move `pago` / `a pagar` e o caixa. **Nunca** altera o total reconhecido (INV-O5).
+
+Expectativas revisadas:
+- **O27:** obrigação de R$ 500 (competência outubro), paga 200 em 10/10 e 300 em 05/11 → consumo de outubro = **500 desde a criação**; caixa de outubro −200 e de novembro −300; ao fim, pago 500 e a pagar 0.
+- **O28:** O27 + anulação do pagamento de 300 → consumo de outubro **continua 500**; pago 200; a pagar 300; caixa de novembro sem os 300.
+
+### 17.7 Premissas encerradas
+
+- **MB-14:** categorias padrão do sistema (só leitura; o titular cria as próprias):
+  - **despesa:** Moradia, Mercado, Alimentação fora, Transporte, Saúde, Educação, Lazer, Vestuário, Assinaturas, Contas e serviços, Impostos e taxas, Pets, Presentes e doações, Outros;
+  - **receita:** Salário, Renda extra, Rendimentos, Outros.
+  - A lista pode mudar por migration futura sem afetar lançamentos existentes.
+- **MB-15:** anexos ficam no Marco C (Storage com política própria) e **não** entram nesta implementação.
+- **MB-12:** `pg_cron` 1.6.4 confirmado.
+- Parcelamento: de 1 a 48 parcelas.
+
+### 17.8 Invariantes e oráculos acrescentados
+
+| ID | Invariante | Mecanismo | Teste |
+|---|---|---|---|
+| INV-C9 | ciclo fechado ou pago: `obligations.original_amount = valor(c)` sempre | T (itens de ciclo fechado imutáveis) + P | O36 |
+| INV-C10 | todo `+v` de estorno no cartão tem `card_credits` correspondente, e vice-versa | R + P (varredura) | O36 |
+| INV-C11 | `U(k) ≥ 0`; Σ aplicações ativas(k) + absorvido ≤ valor(k) | R + C | O23, O39 |
+| INV-O5 | pagamento nunca altera o total reconhecido por competência | V + P | O27, O28, O38 |
+| INV-J3 | falha de job: nenhuma alteração financeira parcial; `failed` persiste; processo morto → `abandoned` | procedure + I | O33, O40 |
+| INV-L7 | `recorded_at` definido só pelo banco | T | O37 |
+
+| # | Cenário | Esperado |
+|---|---|---|
+| O36 | sequência mista: 6x de R$ 1.200 → estorno de R$ 500 (excede a prévia) → fecha e paga parcialmente um ciclo → reversão do estorno → ajuste das parcelas abertas → anulação de uma compra no cartão | EQ-1 com `diferenca = 0` **após cada passo**; INV-C9 e INV-C10 válidas |
+| O37 | despesa de R$ 70 em 02/10 conhecida em t1 e anulada em t2 (abertura R$ 1.000 em 01/10, conhecida em t0) | `account_balance(05/10, t0) = 1.000`; `(05/10, t1) = 930`; `(05/10, t2) = 1.000`; `recorded_at` informado pelo cliente é ignorado |
+| O38 | obrigação de R$ 500, competência novembro, criada em outubro | em outubro: `previsto_futuro = 500`, reconhecido 0; em novembro: `reconhecido_a_pagar = 500`; pago: `reconhecido_pago = 500`; nunca 1.000 |
+| O39 | crédito de R$ 500: 300 aplicados a ciclo depois **pago** + 200 não aplicados; o banco reverte o estorno | 200 saem do não aplicado; 300 viram encargo no ciclo aberto; ciclo pago intacto; EQ-1 = 0 |
+| O39b | anular esse mesmo estorno | recusado (aplicação em ciclo pago) |
+| O40 | job com *failpoint* no meio | nenhuma obrigação criada; `job_runs` registra `running` (commitado) e depois `failed` (commitado); processo morto simulado → `abandoned` na execução seguinte |
+| O41 | ajuste de parcelas que deixaria crédito aplicado > débito do ciclo | recusado; nada gravado |
+| O42 | ajuste com novo total < Σ parcelas preservadas | recusado |
