@@ -1,0 +1,57 @@
+# Ambientes hospedados
+
+Referência: Especificação v1.1, §4 (ambientes), §14 (custos) e §19.8 (D7).
+
+## Situação (15/10/2026)
+
+| Ambiente | Supabase | Frontend | Dados | Estado |
+|---|---|---|---|---|
+| Local | stack do CLI (portas 553xx) | Vite 127.0.0.1:5173 | fictícios | em uso |
+| **Desenvolvimento** | `fluvi-dev` (ref `wovocbnnpvsxndwjghco`, sa-east-1, Free, Postgres 17.11) | Cloudflare Pages: **pendente do login** | **somente fictícios** | migrations, Auth e Edge Function aplicados e verificados |
+| Produção | **não criado**, por decisão de 15/10/2026 | — | reais, só após o gate §10 | criar perto do gate |
+
+O projeto de desenvolvimento **não recebe dados reais**. A separação de
+ambientes não transforma o dev em produção (§12).
+
+## Fornecedores, cotas e custos (§14)
+
+Valores consultados em 15/10/2026 nas páginas oficiais. São estimativas, não
+contratos; reconferir antes de cada decisão de custo.
+
+| Fornecedor / recurso | Plano | Custo atual | Limites relevantes | Risco operacional |
+|---|---|---|---|---|
+| Supabase `fluvi-dev` | Free | US$ 0 | 2 projetos ativos por organização (o PortalLF ocupa 1); 500 MB de banco; 50 mil MAU; **pausa após 7 dias sem uso**; **sem backup automático**; sem proteção contra senhas vazadas | pausa: reativar pelo painel. Backup: coberto pelo backup próprio (abaixo) |
+| Supabase produção (futuro) | Pro (proposta) | ~US$ 25/mês + compute (Micro ~US$ 10, coberto pelo crédito do Pro) | backup diário de 7 dias, sem pausa, proteção contra senhas vazadas; PITR é adicional (~US$ 100/mês) | **exige aprovação de custo** |
+| Cloudflare Pages | Free | US$ 0 | limites de builds e implantações a confirmar no painel | baixo |
+| Cloudflare R2 (destino dos backups) | Free | US$ 0 até 10 GB-mês | 1 mi de operações classe A e 10 mi classe B por mês; sem custo de saída | baixo. Backup de ~0,2 MB/dia |
+| GitHub Actions | repositório público | US$ 0 | — | o CI roda em push |
+| SMTP próprio (e-mails de Auth) | **não contratado** | — | o SMTP padrão do Supabase só entrega para membros da equipe do projeto, com cota mínima | **convites e recuperação no hospedado não chegam a usuários reais** até haver SMTP |
+
+Fontes: [Supabase Pricing](https://supabase.com/pricing),
+[Supabase — Project Pausing](https://supabase.com/docs/guides/platform/free-project-pausing),
+[Cloudflare R2 Pricing](https://developers.cloudflare.com/r2/pricing/).
+
+## Como o `fluvi-dev` foi configurado (reprodutível)
+
+Credenciais fora do repositório, em `%USERPROFILE%\.fluvi\` (senha do banco e
+chave de backup). Guarde cópias no seu gerenciador de senhas.
+
+```bash
+pnpm exec supabase link --project-ref wovocbnnpvsxndwjghco    # SUPABASE_DB_PASSWORD no ambiente
+pnpm exec supabase db push                                     # migrations
+pnpm exec supabase config diff && pnpm exec supabase config push   # Auth endurecido (signup off, senha ≥ 12, hook, MFA)
+pnpm exec supabase secrets set FLUVI_ALLOWED_ORIGINS="<origens do frontend>"
+pnpm exec supabase functions deploy provision-user --use-api
+pnpm exec supabase test db --linked                            # pgTAP no hospedado (transação revertida)
+pnpm --filter @fluvi/tests test:remote                         # Auth hospedado (FLUVI_REMOTE_* do dev)
+```
+
+## Ações manuais pendentes no painel do Supabase
+
+- [ ] **Desligar o provedor de telefone (SMS/Twilio)**: aparece habilitado no
+  hospedado e o `config push` não consegue desligá-lo. Mitigado, porque o
+  signup está desligado.
+- [ ] Configurar **SMTP próprio**, que exige escolher um provedor e um domínio
+  remetente. Sem isso, convites e recuperação não chegam a e-mails reais.
+- [ ] Definir o `site_url` e as URLs de redirecionamento definitivas quando o
+  Pages existir (hoje apontam para o Vite local).

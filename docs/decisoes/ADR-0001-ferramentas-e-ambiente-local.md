@@ -1,7 +1,10 @@
 # ADR-0001 — Ferramentas, versões e ambiente local
 
 - **Status:** aceita (Marco A, entrega 1); ratificada pela Especificação v1.1 (§4.2, §19.1 A1–A2) · **Data:** 14/10/2026
-- **Pendente (v1.1):** confirmar as versões e extensões do PostgreSQL nos projetos remotos e a primeira execução do CI (D6, D7).
+- **Emenda (15/10/2026):** o projeto hospedado `fluvi-dev` roda **PostgreSQL 17.11**, e o local roda 17.6
+  (imagem do CLI 2.118.0). Mesma major. A compatibilidade foi verificada rodando a suíte pgTAP
+  completa no hospedado (137/137) e restaurando um backup dele na imagem 17.6 (fotografia idêntica +
+  pgTAP 137/137). Reavaliar ao subir o CLI. CI: ver `docs/evidencias/2026-10-15-marco-a-d6-d7.md`.
 
 ## Contexto
 

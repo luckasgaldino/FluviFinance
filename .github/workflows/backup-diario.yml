@@ -1,0 +1,50 @@
+name: Backup diário (fluvi-dev)
+
+# D1/§10.1 item 5: backup lógico cifrado (AES-256-GCM) do projeto hospedado,
+# enviado para bucket R2 privado fora do Supabase. Fica inerte até a variável
+# de repositório FLUVI_BACKUP_ENABLED = "true" e os segredos existirem.
+# Falha do job → notificação do GitHub ao responsável (canal mínimo de alerta).
+
+on:
+  schedule:
+    - cron: "15 6 * * *"   # 03:15 em Brasília
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-fluvi-dev
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: ${{ vars.FLUVI_BACKUP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Backup cifrado do projeto hospedado
+        env:
+          FLUVI_BACKUP_DB_URL: ${{ secrets.FLUVI_BACKUP_DB_URL }}
+          FLUVI_BACKUP_KEY: ${{ secrets.FLUVI_BACKUP_KEY }}
+        run: node scripts/backup.mjs --remote --out out --keep 1
+
+      - name: Envio para o R2 (privado)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.FLUVI_BACKUP_BUCKET }}
+        run: |
+          aws s3 cp out/ "s3://${R2_BUCKET}/fluvi-dev/" --recursive --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          # confirma que o objeto chegou (falha o job se não chegou)
+          name=$(ls out/*.dump.enc | xargs -n1 basename)
+          aws s3api head-object --bucket "$R2_BUCKET" --key "fluvi-dev/${name}" --endpoint-url "$R2_ENDPOINT" > /dev/null
+          echo "backup enviado: fluvi-dev/${name}"
