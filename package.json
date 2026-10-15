@@ -13,13 +13,14 @@
     "db:lint": "supabase db lint --level warning",
     "test:db": "supabase test db",
     "test:integration": "pnpm --filter @fluvi/tests test:integration",
-    "test": "pnpm test:db && pnpm test:integration && pnpm test:e2e",
+    "test": "pnpm test:unit && pnpm test:db && pnpm test:integration && pnpm test:e2e",
     "backup": "node scripts/backup.mjs",
     "backup:drill": "node scripts/restore-drill.mjs",
     "web:env": "node scripts/web-env.mjs",
     "web:dev": "node scripts/web-env.mjs && pnpm --filter @fluvi/web dev",
     "web:build": "pnpm --filter @fluvi/web build",
-    "test:e2e": "pnpm --filter @fluvi/tests test:e2e"
+    "test:e2e": "pnpm --filter @fluvi/tests test:e2e",
+    "test:unit": "pnpm --filter @fluvi/domain test"
   },
   "devDependencies": {
     "supabase": "2.118.0",

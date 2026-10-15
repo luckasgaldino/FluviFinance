@@ -175,3 +175,11 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 
 .qr { width: 200px; height: 200px; background: #fff; padding: 8px; border-radius: 8px; }
 .empty { color: var(--text-muted); padding: 12px 0; }
+
+/* ---------- finanças (Marco B) ---------- */
+.money { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.money.negative { color: var(--bad-text); }
+.big { font-size: 1.6rem; margin: 0; }
+.list-item.inactive .meta strong { text-decoration: line-through; }
+.error-text { color: var(--bad-text); }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }

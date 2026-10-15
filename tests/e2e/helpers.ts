@@ -35,3 +35,9 @@ export async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 }
+
+// Login de usuário financeiro: espera a sessão estar estabelecida (tela inicial) antes de navegar.
+export async function loginUser(page: Page, email: string, password: string) {
+  await login(page, email, password);
+  await expect(page).toHaveURL(/\/inicio$/);
+}

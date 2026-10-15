@@ -70,3 +70,80 @@ export const statusLabel: Record<string, string> = {
   suspended: "Suspenso",
   removed: "Removido",
 };
+
+// ---------------------------------------------------------------------------
+// Marco B — finanças
+// ---------------------------------------------------------------------------
+export type AccountType = "checking" | "savings" | "cash" | "credit_card";
+export const accountTypeLabel: Record<AccountType, string> = {
+  checking: "Conta corrente",
+  savings: "Poupança / reserva",
+  cash: "Dinheiro / carteira",
+  credit_card: "Cartão de crédito",
+};
+
+export type AccountBalance = {
+  account_id: string;
+  owner_user_id: string;
+  name: string;
+  type: AccountType;
+  active: boolean;
+  balance_cents: number;
+};
+
+export type Owner = { owner_user_id: string; display_name: string; is_self: boolean };
+
+export type Category = { id: string; name: string; kind: "expense" | "income"; owner_user_id: string | null };
+
+export type TxnType =
+  | "income" | "expense" | "card_purchase" | "card_bill_payment" | "bill_payment"
+  | "transfer_out" | "transfer_in" | "refund" | "reversal" | "installment_adjustment";
+
+export const txnTypeLabel: Record<TxnType, string> = {
+  income: "Receita",
+  expense: "Despesa",
+  card_purchase: "Compra no cartão",
+  card_bill_payment: "Pagamento de fatura",
+  bill_payment: "Pagamento de conta",
+  transfer_out: "Transferência enviada",
+  transfer_in: "Transferência recebida",
+  refund: "Estorno",
+  reversal: "Reversão",
+  installment_adjustment: "Ajuste de parcelas",
+};
+
+export const txnStatusLabel: Record<string, string> = { active: "Ativo", voided: "Anulado", reversed: "Revertido" };
+
+export type Txn = {
+  id: string;
+  owner_user_id: string;
+  type: TxnType;
+  status: "active" | "voided" | "reversed";
+  description: string;
+  amount_cents: number;
+  category_id: string | null;
+  account_id: string;
+  local_date: string;
+  occurred_at: string | null;
+  competence_month: string;
+  note: string | null;
+  cancel_reason: string | null;
+};
+
+export type LedgerEntry = {
+  id: number;
+  transaction_id: string;
+  amount_cents: number;
+  kind: "normal" | "void";
+  posted_on: string;
+  recorded_at: string;
+};
+
+// sinal de cada tipo do ponto de vista de quem vê a lista (entrada +, saída −)
+export const txnDirection: Partial<Record<TxnType, 1 | -1>> = {
+  income: 1, transfer_in: 1, refund: 1,
+  expense: -1, card_purchase: -1, card_bill_payment: -1, bill_payment: -1, transfer_out: -1,
+};
+
+export const owners = (scope: Scope, operation: "read" | "create") =>
+  rpc<Owner[]>("accessible_owners", { p_scope: scope, p_operation: operation });

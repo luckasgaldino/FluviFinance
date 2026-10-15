@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(32);
+select plan(34);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: Admin (a), Luck (1c) e Bia (b) no núcleo F1; Carol (c) noutro núcleo
@@ -75,6 +75,15 @@ select throws_ok($$ select public.create_transaction(gen_random_uuid(), '0000000
 select throws_ok($$ select public.create_transaction(gen_random_uuid(), '00000000-0000-0000-0000-00000000001c',
   'expense', pg_temp.id('acc'), 0, 'x', pg_temp.cat('Mercado'), '2026-10-03') $$,
   '23514', null, 'valor deve ser positivo');
+
+-- FIN-04: hora do lançamento no fuso do lançamento (data de negócio inalterada)
+select pg_temp.put('hora', (public.create_transaction(gen_random_uuid(), '00000000-0000-0000-0000-00000000001c',
+  'expense', pg_temp.id('acc'), 100, 'Café', pg_temp.cat('Alimentação fora'), '2026-10-03', null, null, '23:30') ->> 'id')::uuid);
+select is((select occurred_at from public.transactions where id = pg_temp.id('hora')), '2026-10-04 02:30:00+00'::timestamptz,
+  'FIN-04: 03/10 23:30 em São Paulo = 04/10 02:30 UTC');
+select is((select local_date from public.transactions where id = pg_temp.id('hora')), '2026-10-03'::date,
+  'FIN-04: a data de negócio continua 03/10 (sem conversão de fuso)');
+select public.void_transaction(gen_random_uuid(), pg_temp.id('hora'), 'teste de hora');
 
 -- ---------------------------------------------------------------------------
 -- O16: idempotência

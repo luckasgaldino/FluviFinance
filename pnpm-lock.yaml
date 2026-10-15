@@ -175,6 +175,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@fluvi/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@supabase/supabase-js':
         specifier: 2.117.2
         version: 2.117.2
@@ -206,6 +209,15 @@ importers:
       vite:
         specifier: 8.3.1
         version: 8.3.1(esbuild@0.28.1)
+
+  packages/domain:
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(vite@8.3.4(esbuild@0.28.1))
 
   tests:
     devDependencies:

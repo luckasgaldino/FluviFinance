@@ -19,11 +19,21 @@ const byCode: Record<string, string> = {
   operation_conflict: "Esta operação já foi registrada com outros dados.",
   invalid_email: "E-mail inválido.",
   invalid_display_name: "Informe um nome com até 80 caracteres.",
+  P0002: "Não encontrado ou sem permissão para este titular.",
+  "22023": "Dados inválidos. Revise os campos.",
+  "22P02": "Dados inválidos. Revise os campos.",
 };
+
+// Regras de negócio recusadas pelo banco chegam como 23514 com mensagem em português
+// (sem dados de terceiros): exibidas como estão.
+const businessRule = /^(só |use |compra |operação |esta operação |anule |reverta |estorno|valor acima|crédito |obrigação |transferência |novo total|quantidade |informe )/i;
 
 export function errorMessage(error: unknown): string {
   const e = error as AnyError;
   if (!e) return "";
+  if (e.code === "23514" && e.message && businessRule.test(e.message)) {
+    return e.message.charAt(0).toUpperCase() + e.message.slice(1) + ".";
+  }
   if (e.message && /bloqueada/i.test(e.message)) return "Conta bloqueada. Procure o administrador.";
   const code = e.code ?? e.error;
   if (code && byCode[code]) return byCode[code];

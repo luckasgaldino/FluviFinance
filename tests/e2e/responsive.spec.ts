@@ -35,6 +35,17 @@ test("início do usuário cabe em 360 px", async ({ page }) => {
   await expectAccessible(page);
 });
 
+test("telas financeiras (Contas, Lançamentos, Novo lançamento) cabem em 360 px", async ({ page }) => {
+  await login(page, userEmail, PASSWORD);
+  await expect(page).toHaveURL(/\/inicio$/);
+  for (const [path, heading] of [["/contas", "Contas"], ["/lancamentos", "Lançamentos"], ["/lancamentos/novo", "Novo lançamento"]]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await expectAccessible(page);
+  }
+});
+
 test("painel administrativo cabe em 360 px", async ({ page }) => {
   await login(page, adminEmail, PASSWORD);
   await expect(page).toHaveURL(/\/seguranca\/mfa$/);

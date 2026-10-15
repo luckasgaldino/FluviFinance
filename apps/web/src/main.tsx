@@ -11,6 +11,8 @@ import { Grants } from "./routes/admin/Grants";
 import { Households } from "./routes/admin/Households";
 import { Users } from "./routes/admin/Users";
 import { Blocked, ForgotPassword, Login, MfaEnroll, MfaVerify, Pending, SetPassword } from "./routes/auth";
+import { AccountDetail, Accounts } from "./routes/finance/Accounts";
+import { NewTransaction, Transactions } from "./routes/finance/Transactions";
 import { AdminLayout, Home, UserLayout } from "./routes/shell";
 import "./styles/app.css";
 
@@ -43,7 +45,13 @@ const router = createBrowserRouter([
   { path: "/seguranca/mfa", element: <RequireGate allow={["mfa-enroll", "user", "admin"]}><MfaEnroll /></RequireGate> },
   {
     element: <RequireGate allow={["user"]}><UserLayout /></RequireGate>,
-    children: [{ path: "/inicio", element: <Home /> }],
+    children: [
+      { path: "/inicio", element: <Home /> },
+      { path: "/contas", element: <Accounts /> },
+      { path: "/contas/:id", element: <AccountDetail /> },
+      { path: "/lancamentos", element: <Transactions /> },
+      { path: "/lancamentos/novo", element: <NewTransaction /> },
+    ],
   },
   {
     path: "/admin",

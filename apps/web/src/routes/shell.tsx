@@ -42,7 +42,12 @@ export function AdminLayout() {
 
 export function UserLayout() {
   return (
-    <Shell nav={[{ to: "/inicio", label: "Início" }, { to: "/seguranca/mfa", label: "Segurança" }]}>
+    <Shell nav={[
+      { to: "/inicio", label: "Início" },
+      { to: "/contas", label: "Contas" },
+      { to: "/lancamentos", label: "Lançamentos" },
+      { to: "/seguranca/mfa", label: "Segurança" },
+    ]}>
       <Outlet />
     </Shell>
   );
@@ -78,7 +83,8 @@ export function Home() {
       </section>
       <section className="card stack" aria-labelledby="proximos">
         <h2 id="proximos">Em breve</h2>
-        <Alert kind="info">Contas, cartões e lançamentos chegam na próxima etapa do Fluvi.</Alert>
+        <Alert kind="info">Contas e lançamentos já estão disponíveis. Cartões, faturas e contas a pagar chegam nas próximas etapas.</Alert>
+        <div className="row" style={{ alignItems: "center" }}><Link className="btn" to="/lancamentos/novo">Novo lançamento</Link><Link to="/contas">Ver contas</Link></div>
         {me && <p className="muted">Situação da conta: ativa.</p>}
         <Link to="/seguranca/mfa">Configurar verificação em duas etapas</Link>
       </section>
