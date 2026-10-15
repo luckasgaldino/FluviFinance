@@ -7,7 +7,7 @@ Referência: Especificação v1.1, §4 (ambientes), §14 (custos) e §19.8 (D7).
 | Ambiente | Supabase | Frontend | Dados | Estado |
 |---|---|---|---|---|
 | Local | stack do CLI (portas 553xx) | Vite 127.0.0.1:5173 | fictícios | em uso |
-| **Desenvolvimento** | `fluvi-dev` (ref `wovocbnnpvsxndwjghco`, sa-east-1, Free, Postgres 17.11) | Cloudflare Pages: **pendente do login** | **somente fictícios** | migrations, Auth e Edge Function aplicados e verificados |
+| **Desenvolvimento** | `fluvi-dev` (ref `wovocbnnpvsxndwjghco`, sa-east-1, Free, Postgres 17.11) | **https://fluvi-dev.pages.dev** (Cloudflare Pages, deploy pelo workflow `deploy-dev.yml`) | **somente fictícios** | migrations, Auth, Edge Function e frontend publicados e verificados |
 | Produção | **não criado**, por decisão de 15/10/2026 | — | reais, só após o gate §10 | criar perto do gate |
 
 O projeto de desenvolvimento **não recebe dados reais**. A separação de
@@ -53,5 +53,7 @@ pnpm --filter @fluvi/tests test:remote                         # Auth hospedado 
   signup está desligado.
 - [ ] Configurar **SMTP próprio**, que exige escolher um provedor e um domínio
   remetente. Sem isso, convites e recuperação não chegam a e-mails reais.
-- [ ] Definir o `site_url` e as URLs de redirecionamento definitivas quando o
-  Pages existir (hoje apontam para o Vite local).
+- [x] `site_url` e redirects do dev apontam para https://fluvi-dev.pages.dev (`[remotes.fluvi-dev]` no config.toml).
+- [x] CORS da Edge Function: só https://fluvi-dev.pages.dev e o Vite local. Origem estranha não recebe `Access-Control-Allow-Origin` (verificado).
+- [x] Cabeçalhos no domínio publicado: CSP, HSTS, X-Frame-Options DENY, Referrer-Policy (verificado com curl).
+- [ ] Confirmar a criação do bucket R2 `fluvi-backups-dev` e da regra de expiração de 35 dias (o log do deploy não mostrou a saída).

@@ -419,3 +419,11 @@ enabled = true
 [functions.provision-user]
 enabled = true
 verify_jwt = true
+
+# Projeto hospedado de desenvolvimento (fluvi-dev): sobrescreve só o que difere do local.
+[remotes.fluvi-dev]
+project_id = "wovocbnnpvsxndwjghco"
+
+[remotes.fluvi-dev.auth]
+site_url = "https://fluvi-dev.pages.dev"
+additional_redirect_urls = ["https://fluvi-dev.pages.dev/**", "http://127.0.0.1:5173/**", "http://localhost:5173/**"]
