@@ -1,0 +1,51 @@
+name: Deploy fluvi-dev (Cloudflare Pages)
+
+# Publica o frontend de DESENVOLVIMENTO e garante o bucket R2 privado de backups.
+# Inerte até existirem: segredo CLOUDFLARE_API_TOKEN e variável CLOUDFLARE_ACCOUNT_ID.
+# A URL e a chave anon do Supabase são públicas por definição (vão no bundle);
+# nenhuma chave service_role é usada aqui.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [marco-a/fundacao, main]
+    paths: ["apps/web/**", ".github/workflows/deploy-dev.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-fluvi-dev
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: ${{ vars.CLOUDFLARE_ACCOUNT_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build (aponta para o Supabase fluvi-dev)
+        env:
+          VITE_SUPABASE_URL: https://wovocbnnpvsxndwjghco.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ vars.FLUVI_DEV_ANON_KEY }}
+        run: pnpm web:build
+
+      - name: Projeto Pages e bucket R2 (idempotente)
+        run: |
+          pnpm exec wrangler pages project create fluvi-dev --production-branch main 2>&1 | tail -2 || true
+          pnpm exec wrangler r2 bucket create fluvi-backups-dev 2>&1 | tail -2 || true
+          pnpm exec wrangler r2 bucket lifecycle add fluvi-backups-dev expira-35-dias --expire-days 35 --force 2>&1 | tail -2 || true
+
+      - name: Publicar
+        run: pnpm exec wrangler pages deploy apps/web/dist --project-name fluvi-dev --branch main --commit-dirty=true
