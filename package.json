@@ -1,0 +1,27 @@
+{
+  "name": "fluvi",
+  "private": true,
+  "description": "Fluvi — Gestão Financeira Pessoal e Familiar",
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": "24.19.0"
+  },
+  "scripts": {
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:lint": "supabase db lint --level warning",
+    "test:db": "supabase test db",
+    "test:integration": "pnpm --filter @fluvi/tests test:integration",
+    "test": "pnpm test:db && pnpm test:integration && pnpm test:e2e",
+    "backup": "node scripts/backup.mjs",
+    "backup:drill": "node scripts/restore-drill.mjs",
+    "web:env": "node scripts/web-env.mjs",
+    "web:dev": "node scripts/web-env.mjs && pnpm --filter @fluvi/web dev",
+    "web:build": "pnpm --filter @fluvi/web build",
+    "test:e2e": "pnpm --filter @fluvi/tests test:e2e"
+  },
+  "devDependencies": {
+    "supabase": "2.118.0"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+supabase/.branches/
+supabase/.temp/
+supabase/functions/.env
+backups/
+*.dump
+*.sql.gz
+coverage/
+playwright-report/
+test-results/

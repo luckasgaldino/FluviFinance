@@ -1,0 +1,16 @@
+{
+  "name": "@fluvi/tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "2.117.2",
+    "pg": "8.23.0",
+    "vitest": "5.0.2",
+    "@playwright/test": "1.63.0",
+    "@axe-core/playwright": "4.13.0"
+  }
+}

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  marco-a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # versão lida de packageManager no package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Stack Supabase local e efêmera: sem segredos, sem dados reais.
+      - run: pnpm exec supabase start
+
+      - name: Lint do schema
+        run: pnpm db:lint
+
+      - name: Typecheck e build do frontend
+        run: pnpm web:env && pnpm web:build
+
+      - name: Testes pgTAP (RLS, isolamento, rate limit, recuperação, bloqueio)
+        run: pnpm test:db
+
+      - name: Testes de integração (Auth, MFA, recuperação, rate limit, PostgREST, Edge Functions)
+        run: pnpm test:integration
+
+      - name: Navegador para E2E
+        run: pnpm --filter @fluvi/tests exec playwright install --with-deps chromium
+
+      - name: Testes E2E (fluxos, acessibilidade, 360 px)
+        run: pnpm test:e2e
+
+      # Backup cifrado (chave efêmera) + restauração em container isolado + pgTAP no restaurado
+      - name: Exercício de backup e restauração
+        run: pnpm backup:drill
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/test-results/
+          retention-days: 7
+
+      - if: always()
+        run: pnpm exec supabase stop --no-backup

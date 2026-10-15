@@ -1,0 +1,1 @@
+-- Seeds de desenvolvimento local. Sem dados reais. Usuários de teste são criados pelos testes.
