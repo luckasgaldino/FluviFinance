@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
   push:
     branches: [marco-a/fundacao, main]
-    paths: ["apps/web/**", ".github/workflows/deploy-dev.yml"]
+    paths: ["apps/web/**", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", ".github/workflows/deploy-dev.yml"]
 
 permissions:
   contents: read
