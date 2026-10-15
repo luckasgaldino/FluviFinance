@@ -45,11 +45,21 @@ jobs:
           VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indvdm9jYm5ucHZzeG5kd2pnaGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNzEzNTgsImV4cCI6MjEwNzY0NzM1OH0.sTJKxbyeh6tjU4PkbAsvWJOv66pDwburNqkvCmiWDKU
         run: pnpm web:build
 
-      - name: Projeto Pages e bucket R2 (idempotente)
+      - name: Projeto Pages (idempotente)
+        run: pnpm exec wrangler pages project create fluvi-dev --production-branch main 2>&1 | tail -2 || true
+
+      # Sem engolir erros: o job falha se o bucket não ficar disponível.
+      - name: Bucket R2 privado de backups (cria se faltar, expira em 35 dias)
         run: |
-          pnpm exec wrangler pages project create fluvi-dev --production-branch main 2>&1 | tail -2 || true
-          pnpm exec wrangler r2 bucket create fluvi-backups-dev 2>&1 | tail -2 || true
-          pnpm exec wrangler r2 bucket lifecycle add fluvi-backups-dev expira-35-dias --expire-days 35 --force 2>&1 | tail -2 || true
+          set -euo pipefail
+          if ! pnpm exec wrangler r2 bucket info fluvi-backups-dev > /dev/null 2>&1; then
+            pnpm exec wrangler r2 bucket create fluvi-backups-dev
+          fi
+          if ! pnpm exec wrangler r2 bucket lifecycle list fluvi-backups-dev 2>&1 | grep -q expira-35-dias; then
+            pnpm exec wrangler r2 bucket lifecycle add fluvi-backups-dev expira-35-dias --expire-days 35 --force
+          fi
+          pnpm exec wrangler r2 bucket info fluvi-backups-dev
+          pnpm exec wrangler r2 bucket lifecycle list fluvi-backups-dev
 
       - name: Publicar
         run: pnpm exec wrangler pages deploy apps/web/dist --project-name fluvi-dev --branch main --commit-dirty=true
