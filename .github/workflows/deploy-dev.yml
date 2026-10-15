@@ -52,9 +52,12 @@ jobs:
       - name: Bucket R2 privado de backups (cria se faltar, expira em 35 dias)
         run: |
           set -euo pipefail
-          if ! pnpm exec wrangler r2 bucket info fluvi-backups-dev > /dev/null 2>&1; then
-            pnpm exec wrangler r2 bucket create fluvi-backups-dev
-          fi
+          # a API do R2 pode responder erro interno (10001) logo após a ativação: tenta de novo
+          for i in 1 2 3 4 5; do
+            pnpm exec wrangler r2 bucket info fluvi-backups-dev > /dev/null 2>&1 && break
+            pnpm exec wrangler r2 bucket create fluvi-backups-dev && break
+            echo "tentativa $i falhou; aguardando"; sleep $((i * 15))
+          done
           if ! pnpm exec wrangler r2 bucket lifecycle list fluvi-backups-dev 2>&1 | grep -q expira-35-dias; then
             pnpm exec wrangler r2 bucket lifecycle add fluvi-backups-dev expira-35-dias --expire-days 35 --force
           fi
