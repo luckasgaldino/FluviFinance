@@ -113,6 +113,7 @@ export function Transactions() {
       <PageTitle>Lançamentos</PageTitle>
       <div className="row" style={{ alignItems: "center" }}>
         <Link className="btn" to="/lancamentos/novo">Novo lançamento</Link>
+        <Link className="btn secondary" to="/cartoes/compra">Compra no cartão</Link>
       </div>
       {feedback && <Alert kind="success">{feedback}</Alert>}
       {action && <ActionPanel action={action} onClose={(msg) => { setAction(null); if (msg) setFeedback(msg); }} />}
@@ -149,7 +150,7 @@ export function Transactions() {
               return (
                 <li key={t.id} className={`list-item ${t.status !== "active" ? "inactive" : ""}`} aria-label={t.description}>
                   <div className="meta">
-                    <strong>{t.description}</strong>
+                    {t.type === "card_purchase" ? <Link to={`/compras/${t.id}`}><strong>{t.description}</strong></Link> : <strong>{t.description}</strong>}
                     <span className="muted">
                       {formatDate(t.local_date)} · {txnTypeLabel[t.type]}
                       {t.category_id && ` · ${catName.get(t.category_id) ?? ""}`}

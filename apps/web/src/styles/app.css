@@ -183,3 +183,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .list-item.inactive .meta strong { text-decoration: line-through; }
 .error-text { color: var(--bad-text); }
 a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 0; }
+.kv > div { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.kv dt { color: var(--text-muted); font-size: 0.85rem; }
+.kv dd { margin: 4px 0 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

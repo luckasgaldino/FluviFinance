@@ -147,3 +147,71 @@ export const txnDirection: Partial<Record<TxnType, 1 | -1>> = {
 
 export const owners = (scope: Scope, operation: "read" | "create") =>
   rpc<Owner[]>("accessible_owners", { p_scope: scope, p_operation: operation });
+
+// Cartões (Marco B)
+export type CardPosition = {
+  card_id: string;
+  owner_user_id: string;
+  name: string;
+  credit_limit_cents: number;
+  debt_total_cents: number;
+  closed_remaining_cents: number;
+  open_preview_cents: number | null;
+  future_installments_cents: number;
+  unapplied_credit_cents: number;
+  available_limit_cents: number;
+};
+
+export type Card = {
+  id: string;
+  owner_user_id: string;
+  account_id: string;
+  name: string;
+  brand: string | null;
+  last_four: string | null;
+  credit_limit_cents: number;
+  closing_day: number;
+  due_day: number;
+  closing_day_policy: "current_cycle" | "next_cycle";
+  active: boolean;
+};
+
+export type CardCycle = {
+  cycle_id: string;
+  card_id: string;
+  starts_on: string;
+  closes_on: string;
+  due_on: string;
+  status: "open" | "closed";
+  date_source: "estimated" | "confirmed";
+  debits_cents: number;
+  credits_cents: number;
+  amount_cents: number;
+  obligation_id: string | null;
+  paid_cents: number;
+  remaining_cents: number | null;
+  is_paid: boolean;
+};
+
+export type Installment = {
+  id: string;
+  purchase_id: string;
+  revision: number;
+  sequence: number;
+  amount_cents: number;
+  billing_cycle_id: string;
+  status: "valid" | "superseded";
+};
+
+export const cycleLabel = (c: Pick<CardCycle, "status" | "date_source" | "is_paid">) =>
+  c.status === "closed" ? (c.is_paid ? "Paga" : "Fechada") : c.date_source === "confirmed" ? "Aberta (confirmada)" : "Aberta (estimada)";
+
+export const cycleBadge = (c: Pick<CardCycle, "status" | "is_paid">) =>
+  c.status === "closed" ? (c.is_paid ? "active" : "pending") : "neutral";
+
+/** Converte campos numéricos vindos da API (bigint pode chegar como string) para number. */
+export function nums<T extends Record<string, unknown>>(row: T, keys: (keyof T)[]): T {
+  const out = { ...row };
+  for (const k of keys) if (out[k] !== null && out[k] !== undefined) out[k] = Number(out[k]) as T[keyof T];
+  return out;
+}

@@ -12,6 +12,8 @@ import { Households } from "./routes/admin/Households";
 import { Users } from "./routes/admin/Users";
 import { Blocked, ForgotPassword, Login, MfaEnroll, MfaVerify, Pending, SetPassword } from "./routes/auth";
 import { AccountDetail, Accounts } from "./routes/finance/Accounts";
+import { CardDetail, Cards } from "./routes/finance/Cards";
+import { NewPurchase, PurchaseDetail } from "./routes/finance/Purchases";
 import { NewTransaction, Transactions } from "./routes/finance/Transactions";
 import { AdminLayout, Home, UserLayout } from "./routes/shell";
 import "./styles/app.css";
@@ -51,6 +53,10 @@ const router = createBrowserRouter([
       { path: "/contas/:id", element: <AccountDetail /> },
       { path: "/lancamentos", element: <Transactions /> },
       { path: "/lancamentos/novo", element: <NewTransaction /> },
+      { path: "/cartoes", element: <Cards /> },
+      { path: "/cartoes/compra", element: <NewPurchase /> },
+      { path: "/cartoes/:id", element: <CardDetail /> },
+      { path: "/compras/:id", element: <PurchaseDetail /> },
     ],
   },
   {
