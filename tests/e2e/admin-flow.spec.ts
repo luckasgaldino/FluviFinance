@@ -24,8 +24,9 @@ test.afterAll(async () => {
   await sql("delete from public.households where name = $1", [householdName]);
 });
 
-async function adminPage(browser: Browser): Promise<Page> {
+async function adminPage(browser: Browser, opts: { fakeClock?: boolean } = {}): Promise<Page> {
   const page = await (await browser.newContext()).newPage();
+  if (opts.fakeClock) await page.clock.install();
   await login(page, adminEmail, PASSWORD);
   await expect(page).toHaveURL(/\/verificar$/);
   await page.getByLabel("Código do aplicativo autenticador").fill(await freshTotp(totpSecret));
@@ -81,6 +82,21 @@ test("Admin cria núcleo e convida Luck e Bia; contas ficam pendentes", async ({
     await expect(page.getByRole("listitem", { name })).toContainText("Pendente");
   }
   await expectAccessible(page);
+});
+
+// Regressão: a renovação do token trocava a chave do estado de sessão, a página
+// desmontava e o formulário era apagado (falha observada no CI em 15/10/2026).
+test("Renovação do token não desmonta a página nem apaga formulário em edição", async ({ browser }) => {
+  const page = await adminPage(browser, { fakeClock: true });
+  const token = () => page.evaluate(() => JSON.parse(localStorage.getItem("fluvi.auth")!).access_token as string);
+  await page.getByLabel("Nome").fill("Rascunho em edição");
+  const before = await token();
+
+  await page.clock.fastForward("59:30"); // perto do vencimento (jwt_expiry 3600 s): o SDK renova
+  await expect.poll(token, { timeout: 30_000 }).not.toBe(before);
+
+  await expect(page.getByLabel("Nome")).toHaveValue("Rascunho em edição");
+  await expect(page).toHaveURL(/\/admin\/usuarios$/);
 });
 
 test("Convidados ativam a conta pelo link do e-mail e caem no início", async ({ browser }) => {

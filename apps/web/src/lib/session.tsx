@@ -24,6 +24,17 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+// Lê só a claim "aal" do JWT para compor a chave do cache (não é usada para autorizar).
+function aalOf(token: string | undefined): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return (JSON.parse(atob(payload)) as { aal?: string }).aal ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function computeGate(session: Session | null | undefined, state: SessionState | undefined, failed: boolean): Gate {
   if (session === undefined) return "loading";
   if (session === null) return "anon";
@@ -62,7 +73,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [session, queryClient]);
 
   const state = useQuery({
-    queryKey: ["session-state", session?.user.id, session?.access_token],
+    // Chave por usuário + nível de autenticação: a renovação periódica do token não
+    // muda a chave (a página não desmonta nem perde formulários); a elevação por MFA muda.
+    queryKey: ["session-state", session?.user.id, aalOf(session?.access_token)],
     enabled: !!session,
     staleTime: 30_000,
     retry: false,
