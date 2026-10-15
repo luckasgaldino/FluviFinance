@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 export const PG_IMAGE = "public.ecr.aws/supabase/postgres:17.6.1.171";
 export const LOCAL_DB_CONTAINER = "supabase_db_fluvi";
 export const SCHEMAS = ["auth", "public", "private", "supabase_migrations"];
+// Extensões de que o schema depende e que o pg_dump por schema não recria.
+export const REQUIRED_EXTENSIONS = ["btree_gist"];
 
 const MAGIC = Buffer.from("FLVB1");
 

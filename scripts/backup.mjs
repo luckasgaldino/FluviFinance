@@ -13,7 +13,7 @@ import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
-import { dump, encrypt, LOCAL_DB_CONTAINER, loadKey, pgVersion, SCHEMAS, sha256, snapshot } from "./lib/backup-core.mjs";
+import { dump, encrypt, LOCAL_DB_CONTAINER, loadKey, pgVersion, REQUIRED_EXTENSIONS, SCHEMAS, sha256, snapshot } from "./lib/backup-core.mjs";
 
 export function createBackup({ target, outDir = "backups", key = loadKey(), keep = 14 }) {
   mkdirSync(outDir, { recursive: true });
@@ -26,6 +26,7 @@ export function createBackup({ target, outDir = "backups", key = loadKey(), keep
     created_at: new Date().toISOString(),
     source: target.container ? `local:${target.container}` : "remote",  // nunca a URL/credencial
     schemas: SCHEMAS,
+    required_extensions: REQUIRED_EXTENSIONS,
     pg_version: pgVersion(target),
     cipher: "aes-256-gcm",
     plain_bytes: plain.length,

@@ -97,7 +97,9 @@ function startIsolatedContainer() {
   throw new Error("container de restauração não ficou pronto");
 }
 
-function restore(plain) {
+function restore(plain, extensions = []) {
+  // extensões exigidas pelo schema (o dump por schema não as recria)
+  for (const ext of extensions) psql(restored, `create extension if not exists ${ext} with schema extensions;`);
   run("docker", ["exec", "-i", RESTORE_CONTAINER, "sh", "-c", "cat > /tmp/restore.dump"], { input: plain });
   run("docker", ["exec", RESTORE_CONTAINER, "pg_restore", "-U", "supabase_admin", "-d", "postgres",
     "--clean", "--if-exists", "--exit-on-error", "/tmp/restore.dump"]);
@@ -179,7 +181,7 @@ try {
   step("container isolado pronto", { container: RESTORE_CONTAINER, port: RESTORE_PORT });
 
   const t0 = Date.now();
-  restore(plain);
+  restore(plain, manifest.required_extensions ?? []);
   report.restore_seconds = Math.round((Date.now() - t0) / 100) / 10;
   step("restauração concluída", { seconds: report.restore_seconds });
 

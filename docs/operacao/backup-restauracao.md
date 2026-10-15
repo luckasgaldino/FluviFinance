@@ -8,6 +8,8 @@ Referência: Especificação v1.1, §10.1 item 5, §14 e §19.8 (D1). Decisões 
 |---|---|---|
 | Schemas `auth`, `public`, `private`, `supabase_migrations` | sim | usuários, fatores MFA, perfis, núcleos, grants, auditoria, histórico de migrations |
 | Bytes de arquivos (Storage) | **não se aplica ainda** | o Storage está desligado no Marco A. Entra junto com os anexos no Marco B |
+| Extensões exigidas (`btree_gist`) | recriadas na restauração | listadas no manifesto (`required_extensions`) |
+| Agendamentos (`cron`) | não | reagendar após restaurar (checklist abaixo) |
 | Papéis do banco | não | o Fluvi não cria papéis próprios; a plataforma Supabase fornece os papéis |
 | Segredos (Vault), chaves de API | não | os segredos ficam no provedor e no gerenciador de segredos, nunca no backup |
 
@@ -58,6 +60,7 @@ A pasta `backups/` está no `.gitignore` e nunca é versionada.
 - [ ] Revalidar exclusões feitas depois do backup (pedidos de titulares): reaplicar antes de liberar o acesso.
 - [ ] Revalidar grants, administradores e status de perfis contra o registro de incidentes.
 - [ ] Confirmar que o ambiente restaurado não envia e-mail nem push antes da troca de DNS ou chaves.
+- [ ] Reagendar os jobs (o schema `cron` não está no backup): `select cron.schedule(...)` conforme a migration `20261016000500_fin_rpcs_settlement.sql`. Só depois de confirmar que o ambiente restaurado é o oficial.
 - [ ] Registrar a evidência em `docs/evidencias/` (sem dados pessoais).
 
 ## Pendências (não cumpridas por este documento)
