@@ -32,3 +32,13 @@ Localização e anexo ficam para o Marco C (MB-15), indicados no formulário.
 
 1. Aplicar a migration `…0700` ao `fluvi-dev`. Sem ela, o formulário falha, porque envia a hora.
 2. Levar a branch para a `main`. O workflow de deploy publica as telas em `fluvi-dev.pages.dev`.
+
+## Publicação no `fluvi-dev` (15/10/2026, autorizada)
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | 1ª execução falhou por **YAML inválido** (nome de passo com `: ` sem aspas) e foi corrigida; execução 38803038339 verde |
+| Backup pré-publicação | `2026-10-15T20-28-04-422Z.dump.enc`, sha256 `7302b50a5c1f2be2aab80fe5f2d41b7d1f988803121bd0567f3226306de180f6`; restauração PASS (fotografia idêntica, pgTAP 278 compatíveis com o schema do backup, sem o 05, que já usa a hora) |
+| Migration `…0700` no `fluvi-dev` | aplicada; `supabase test db --linked` **312/312** |
+| `main` + deploy do Pages | deploy `success`; `/contas` responde 200; bundle publicado contém as telas novas |
+| Usuário de validação | `luck.teste@fluvi.test` (fictício, sem núcleo nem grants), senha definida pelo responsável via link de uso único |
