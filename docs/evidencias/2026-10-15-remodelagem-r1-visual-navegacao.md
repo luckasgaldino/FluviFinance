@@ -1,7 +1,7 @@
 # Evidência — Remodelagem v2.2, fase R1 (visual e navegação)
 
 **Data:** 15/10/2026 · **Branch:** `remodelagem/r1-visual-navegacao`
-**Estado:** testado localmente. CI ao enviar a branch. **Não publicado** no fluvi-dev (o merge na `main` dispara o deploy e depende de autorização).
+**Estado:** testado localmente e no CI (run 38826210854, verde). **Não publicado** no fluvi-dev (o merge na `main` dispara o deploy e depende de autorização).
 
 ## O que entrou
 
