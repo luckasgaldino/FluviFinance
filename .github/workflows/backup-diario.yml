@@ -9,6 +9,12 @@ on:
   schedule:
     - cron: "15 6 * * *"   # 03:15 em Brasília
   workflow_dispatch:
+  # verificação: roda também quando o código de backup muda (o agendamento só vale na main)
+  push:
+    paths:
+      - ".github/workflows/backup-diario.yml"
+      - "scripts/backup.mjs"
+      - "scripts/lib/backup-core.mjs"
 
 permissions:
   contents: read
