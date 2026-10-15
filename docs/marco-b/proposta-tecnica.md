@@ -1,332 +1,446 @@
-# Marco B — Proposta técnica para revisão (antes do código)
+# Marco B — Proposta técnica revisada (rev. 2)
 
-- **Estado:** proposta para validação. **Nada disto está implementado.**
-- **Data:** 15/10/2026 · **Base:** Especificação v1.1 (§6, §7.1–7.8, §8 FIN-02 a FIN-05, §11, §13)
-- **Pré-condição:** Marco A testado localmente, no CI e no hospedado de desenvolvimento.
-  Pendente: SMTP próprio, por decisão do responsável de deixar para depois.
-- **Como revisar:** cada decisão tem um código (**MB-xx**). Responda
-  aceitar, ajustar ou rejeitar. Depois da validação vêm o DDL completo
-  (migrations), os testes-oráculo em pgTAP e só então as telas.
+- **Estado:** revisão 2. Estrutura geral aprovada; ajustes da avaliação de 15/10/2026 incorporados. **Nada está implementado.**
+- **Base:** Especificação v1.1 (§6, §7.1–7.8, §8 FIN-02 a FIN-05, §11, §13) + avaliação da rev. 1.
+- **Escopo:** só Marco B. **Não** antecipa BI, IA nem PWA. A conciliação com extratos (Marco D) entra só como ponto de extensão (campos e estados), sem importação.
+- **Dados reais:** esta aprovação **não autoriza** dados financeiros reais. A homologação do Marco A e o gate §10 continuam obrigatórios. Toda execução usa dados fictícios.
+- **Próximo passo:** com esta revisão validada → DDL nas migrations → testes-oráculo (pgTAP e integração) **antes** das telas.
+
+### Mudanças em relação à rev. 1
+
+| Avaliação | Mudança | Onde |
+|---|---|---|
+| 1. Cartões | política por cartão para compras no dia do fechamento; quatro posições distintas (dívida, fatura, futuras, limite); datas confirmadas prevalecem; ciclos fechados, pagos ou confirmados são imutáveis | §5 |
+| 2. Parcelas e estornos | estorno é crédito e não cancela parcelas; ajuste de parcelas é operação explícita com soma fechada; conciliação dívida = obrigações + aberto + futuras − créditos | §6, §7 |
+| 3. Cancelamento e reversão | razão somente-acréscimo; **anulação** (compensação com data efetiva da original) × **reversão** (movimento real na data em que ocorreu); bloqueio por dependentes | §8 |
+| 4. Competência | competência, vencimento e liquidação em campos distintos; consumo de contas a pagar reconhecido por pagamento, sem dupla contagem; indicadores sempre derivados | §4, §9 |
+| 5. Permissões | transferência entre titulares exige `create` nas duas pontas; erros não revelam existência; endurecimento de funções verificado por teste | §10, §12 |
+| 6. Concorrência e jobs | testes concorrentes de pagamento, estorno e ajuste de parcelas; obrigações idempotentes; registro de execução e falha dos jobs | §11, §14 |
 
 ---
 
 ## 1. Escopo do Marco B
 
-| Entra | Não entra (marco posterior) |
+| Entra | Não entra |
 |---|---|
-| FIN-02 contas, saldo inicial e saldo | metas e orçamentos (Marco D) |
-| FIN-03 cartões, ciclos, faturas e parcelas | importação de extratos (D) |
-| FIN-04 receitas, despesas, transferências e compras parceladas (online) | offline/PWA (C) |
-| FIN-05 obrigações, pagamentos totais e parciais, recorrências | dashboards e BI (D) |
-| estornos/reembolsos, cancelamento e reversão (§7.6–7.7) | juros, antecipação e renegociação de parcelas |
-| categorias iniciais editáveis (pré-requisito de FIN-04) | anexos (exige Storage; proposta: final do B ou C) |
-| auditoria de todas as operações financeiras | geolocalização (campos previstos, coleta no C) |
+| FIN-02 contas, saldo inicial, saldo, extrato | metas e orçamentos (D) |
+| FIN-03 cartões, ciclos, faturas, parcelas, posições do cartão | importação e conciliação automática (D) |
+| FIN-04 receitas, despesas, transferências, compras parceladas (online) | offline/PWA (C) |
+| FIN-05 obrigações, pagamentos totais e parciais, recorrências | dashboards, BI, IA (D/E) |
+| estornos, anulação, reversão, ajuste de parcelas | juros, rotativo, antecipação e renegociação |
+| categorias iniciais editáveis | anexos (MB-15: fim do B ou C) |
+| auditoria e registro de jobs | alertas e push (E) |
 
 ---
 
 ## 2. Princípios
 
-1. **O razão (`ledger_entries`) é a verdade do caixa e da dívida.** O saldo de
-   qualquer conta é calculado a partir dele. Não existe tabela de saldo
-   editável. Se no futuro houver cache de saldo, ele precisa ser reconstruível
-   e testado contra o razão.
-2. **Três visões, nunca misturadas** (§7.2):
-   - **consumo**: o que foi comprado e quando (competência);
-   - **comprometimento**: o que vence e quando (obrigações, parcelas);
-   - **caixa**: o que saiu ou entrou de fato (lançamentos no razão de contas de caixa).
-3. **Toda operação com mais de uma linha** (compra parcelada, pagamento,
-   transferência, estorno, reversão) é **uma RPC transacional**. O navegador
-   nunca grava razão e cabeçalho em chamadas separadas.
-4. **Dinheiro em centavos `bigint`** com `CHECK`. Moeda `BRL` (ISO 4217) por conta.
-5. **Autorização pelo titular** (`owner_user_id`) via `private.can_access_owner`,
-   no padrão do Marco A, com escopos `accounts`, `cards` e `transactions`.
+1. **O razão (`ledger_entries`) é somente-acréscimo e é a verdade do caixa e da dívida.** Nenhuma linha é alterada ou apagada, nem pela aplicação nem pelas RPCs. Correção = nova linha de compensação. Saldos e indicadores são sempre **derivados**, e nenhum agregado é gravado como fonte.
+2. **Três visões, nunca misturadas:**
+   - **consumo**: competência;
+   - **comprometimento**: vencimentos e parcelas;
+   - **caixa**: lançamentos em contas de caixa na data efetiva.
+3. **Operação com mais de uma linha = uma RPC transacional**, idempotente por `client_operation_id`.
+4. **Centavos `bigint`** com `CHECK`; moeda `BRL`.
+5. **Autorização pelo titular** via `private.can_access_owner`. Quem não tem leitura não recebe dados, nem por retorno de RPC, nem por mensagem de erro.
 
 ---
 
 ## 3. Modelo contábil
 
-### 3.1 Contas
+### 3.1 Contas e sinal (MB-01, ratificada)
 
-`financial_accounts.type`:
+- `financial_accounts.type`: `checking`, `savings`, `cash` (ativos) e `credit_card` (passivo, 1:1 com `credit_cards`).
+- **Positivo aumenta o saldo da conta, negativo diminui.** A dívida do cartão aparece como saldo negativo.
 
-| Tipo | Natureza | Saldo positivo significa |
-|---|---|---|
-| `checking`, `savings`, `cash` (carteira/dinheiro) | ativo | dinheiro disponível |
-| `credit_card` | passivo | **crédito a favor** (raro); dívida aparece como saldo **negativo** |
+### 3.2 Contrapartida nominal (MB-02, ratificada) e regra de soma por tipo
 
-Cada cartão (`credit_cards`) tem **uma** conta do tipo `credit_card`, que
-registra a dívida dele.
-
-### 3.2 Convenção de sinais — **MB-01**
-
-Uma única regra para todas as contas: **`amount_cents` positivo aumenta o
-saldo da conta; negativo diminui**. Em conta de cartão, compra é negativa (a
-dívida cresce) e pagamento de fatura é positivo (a dívida cai). O saldo de
-qualquer conta é `abertura + Σ amount_cents`.
-
-### 3.3 Contrapartida — **MB-02**
-
-O razão registra só **contas reais** (caixa e dívida). A contrapartida de
-receitas e despesas é **nominal**: é a **categoria**, gravada no cabeçalho da
-operação (`transactions.category_id`). Proposta: não modelar partidas dobradas
-completas com contas de resultado. É mais simples para uso pessoal e atende §7.
-Em compensação, cada tipo de operação tem uma **regra de soma** verificada no banco:
-
-| Operação (`transactions.type`) | Lançamentos no razão | Σ do razão | Conta como consumo? | Conta como caixa? |
+| `transactions.type` | Lançamentos no razão | Σ | Consumo | Caixa |
 |---|---|---|---|---|
-| `income` | conta de caixa `+v` | `+v` | não (é receita) | entrada |
-| `expense` (débito/Pix/dinheiro) | conta de caixa `−v` | `−v` | **sim** | saída |
-| `card_purchase` | conta do cartão `−total` | `−total` | **sim, uma vez, pelo total** | não |
-| `card_bill_payment` | caixa `−v`, cartão `+v` | **0** | **não** | saída |
-| `transfer_out` / `transfer_in` | origem `−v` / destino `+v` (uma por titular) | 0 no par | não | eliminada no consolidado |
-| `refund` (estorno) | cartão `+v` ou caixa `+v` | `+v` | **reduz** o consumo da compra original | entrada (se for em caixa) |
-| `reversal` (reversão contábil) | espelho exato da original | `−Σ original` | anula a original | anula a original |
-| `opening` | — (fica em `financial_accounts`) | — | não | não |
+| `income` | caixa `+v` | `+v` | — (receita) | entrada |
+| `expense` | caixa `−v` | `−v` | **+v** na competência | saída |
+| `card_purchase` | cartão `−total` | `−total` | **+total uma vez** na competência | — |
+| `card_bill_payment` | caixa `−v`, cartão `+v` | 0 | — | saída |
+| `transfer_out` / `transfer_in` | origem `−v` / destino `+v` | 0 no par | — | eliminada no consolidado |
+| `refund` | cartão `+v` **ou** caixa `+v` | `+v` | **−v** sobre a compra original | entrada (se for em caixa) |
+| `reversal` | espelho real, na data do evento | `−Σ origem` | anula a origem | movimento real |
+| `installment_adjustment` | cartão `±Δ` | `±Δ` | `±Δ` sobre a compra | — |
 
-Os exemplos da §7.2 conferem com a tabela:
-- compra de R$ 1.200 em 6x = 1 consumo de R$ 1.200;
-- pagamento de fatura de R$ 200 = caixa −200 e dívida −200, sem consumo.
+Lançamentos de **compensação** (anulação, §8.1) espelham a origem com a mesma data efetiva e marca `kind = 'void'`.
 
-### 3.4 Saldo inicial — **MB-03**
+### 3.3 Bitemporalidade do razão
 
-Saldo na data D = `opening_balance_cents + Σ lançamentos com data > opening_date e ≤ D`.
+Cada lançamento tem `posted_on` (data efetiva) e `recorded_at` (quando foi gravado). Com isso o banco responde duas perguntas:
 
-- Segue literalmente a §7.3 ("posteriores à data de corte"). Um lançamento **no
-  próprio dia** da abertura **não** altera o saldo: entende-se que a abertura é
-  o saldo **ao fim** daquele dia. **Confirmar.**
-- Lançamentos com data ≤ `opening_date` (histórico importado) entram nas visões
-  de consumo, mas **não** no saldo.
-- Aceite FIN-02: abertura de R$ 1.000 em 01/10 + despesa de R$ 70 em 02/10 = **R$ 930**.
+- **"Qual é o saldo correto em D?"** Σ por `posted_on ≤ D`, incluindo compensações. Uma anulação some com o efeito desde a origem.
+- **"O que o sistema mostrava em D?"** Σ por `posted_on ≤ D` e `recorded_at ≤ D`. É o histórico reconstruível para auditoria.
+
+### 3.4 Saldo inicial (MB-03, ratificada)
+
+`saldo(D) = opening_balance_cents + Σ amount_cents (posted_on > opening_date e ≤ D)`. A abertura não é receita. Lançamentos com data ≤ corte entram no consumo, mas não no saldo.
 
 ---
 
-## 4. Tempo (§7.1)
+## 4. Tempo: competência, vencimento e liquidação
 
-| Campo | Tipo | Uso |
+| Conceito | Campo | Onde vive | Regra |
+|---|---|---|---|
+| fato | `occurred_at` (UTC) + `local_date` + `timezone` | `transactions` | `local_date` define o ciclo do cartão e a competência padrão |
+| **competência** | `competence_month` (dia 1) | `transactions`, `obligations` | padrão = mês de `local_date` (ou o mês de referência da obrigação). Editável e auditado |
+| **vencimento** | `due_date` | `obligations`, `billing_cycles.due_on` | não muda a competência |
+| **liquidação** | `posted_on` / `paid_at` | `ledger_entries`, `payments` | caixa e saldo usam só esta data |
+
+"Hoje" = data em `America/Sao_Paulo`. Relatórios escolhem **explicitamente** a base: competência ou caixa.
+
+---
+
+## 5. Cartões, ciclos e faturas
+
+### 5.1 Configuração por cartão
+
+| Campo | Valores | Uso |
 |---|---|---|
-| `occurred_at` | `timestamptz` (UTC) | instante do fato, quando houver hora |
-| `local_date` | `date` | data do fato no fuso de origem: é ela que define ciclo e competência |
-| `timezone` | `text` (IANA) | padrão `America/Sao_Paulo` |
-| `competence_month` | `date` (dia 1) | mês de consumo. Padrão: mês de `local_date`; editável |
-| `due_date` | `date` | vencimento (obrigações e ciclos) |
-| `paid_at` / `posted_on` | `timestamptz` / `date` | liquidação real (caixa) |
+| `closing_day`, `due_day` | 1–31 | dia inexistente no mês → último dia |
+| `closing_day_policy` | `current_cycle` \| `next_cycle` | compra **no dia do fechamento** entra no ciclo que fecha nesse dia ou no seguinte. Padrão `current_cycle`, ajustável por cartão |
+| `credit_limit_cents` | ≥ 0 | limite cadastrado |
+| `rule_revision` | inteiro | incrementa a cada mudança de dia ou política |
 
-"Hoje", para atraso e geração de recorrências, é calculado em `America/Sao_Paulo`.
+### 5.2 Ciclos
 
----
+- `billing_cycles`: `starts_on`, `closes_on`, `due_on`, `status` (`open` → `closed` → `paid`, derivado da obrigação), `date_source` (`estimated` \| `confirmed`), `confirmed_at/by`, `rule_revision`.
+- **Regra estimada:**
+  - fechamento do mês M = `closing_day` de M (ajustado ao fim do mês);
+  - o ciclo vai do fechamento anterior + 1 dia até o fechamento de M;
+  - vencimento = primeiro `due_day` **depois** do fechamento (ajustado ao fim do mês).
+- **Fechamento de ciclo:** um job (ou o primeiro acesso após `closes_on`) passa o ciclo a `closed` e cria a obrigação `card_bill`. É idempotente: `UNIQUE(billing_cycle_id)` em `obligations`.
 
-## 5. Cartões, ciclos e faturas (§7.2, FIN-03)
+### 5.3 Datas confirmadas pelo banco prevalecem
 
-### 5.1 Regra de ciclo — **MB-04**
+- A RPC `confirm_billing_cycle(cycle, closes_on, due_on, valor_fatura_informado)` grava as datas reais (`date_source = 'confirmed'`). No B ela é manual; no D, a conciliação a usa.
+- Ao confirmar, compras na fronteira entre ciclos **abertos** são reatribuídas pelas datas reais. A operação é recusada se mover parcela para ciclo `closed`/`paid` ou se o ciclo já tiver pagamento.
+- O valor de fatura informado pelo banco é **comparado** com o calculado. Diferença é **registrada** como divergência (`cycle_discrepancies`), nunca compensada automaticamente (§7.3: "nunca inventar movimentação compensatória").
+- Ciclo confirmado **não** é recalculado por mudança de regra.
 
-- **Fechamento** do mês M = dia `closing_day` de M. Se o dia não existir (29, 30, 31), usa-se o último dia do mês.
-- **Ciclo** = (fechamento anterior + 1 dia) até o fechamento de M, **inclusive**.
-- **Vencimento** = primeiro dia `due_day` **depois** do fechamento (mesmo mês, se
-  `due_day` > `closing_day`; senão, mês seguinte), também ajustado ao último dia do mês.
-- **Compra** entra no ciclo que contém sua `local_date`. Compra **no dia do
-  fechamento** entra no ciclo que fecha nesse dia. **Confirmar com a prática
-  dos seus cartões**: alguns bancos consideram o dia do fechamento como do ciclo seguinte.
-- Ciclos são **materializados** (`billing_cycles`) sob demanda, até o ciclo da última parcela.
-- A data é **estimativa**. A data real do banco prevalece quando a importação
-  (Marco D) conciliar, e a interface mostra "ciclo estimado" (§7.2).
+### 5.4 Mudança de dia ou política
 
-### 5.2 Mudança de fechamento ou vencimento
+Recalcula só ciclos `open`, `estimated`, sem pagamento e com `closes_on ≥ hoje`. Ciclos `closed`, `paid` ou `confirmed` são **imutáveis** (gatilho). As parcelas dos ciclos recalculados são reatribuídas na mesma transação, com auditoria e nova `rule_revision`.
 
-Recalcula só ciclos **abertos e futuros**, ou seja, sem fatura fechada nem
-pagamento. Ciclos fechados ou pagos mantêm as datas históricas. Parcelas de
-ciclos recalculados são reatribuídas pela mesma regra, com auditoria.
+### 5.5 Quatro posições do cartão (`v_card_position`, security_invoker)
 
-### 5.3 Parcelas — **MB-05**
+| Posição | Definição |
+|---|---|
+| **Dívida total** | `−saldo da conta do cartão` = compras e ajustes − estornos − pagamentos (pelo razão) |
+| **Fatura atual** | fatura do ciclo `closed` mais antigo com saldo devedor; se não houver, a prévia do ciclo `open` |
+| **Fatura em aberto (prévia)** | Σ parcelas do ciclo `open` − créditos aplicados a ele |
+| **Parcelas futuras** | Σ parcelas válidas em ciclos posteriores ao `open` |
+| **Limite disponível** | `credit_limit − dívida total`. Pode ficar negativo; aí é exibido como "acima do limite" |
 
-- Distribuição: `q = total ÷ n` (inteiro), `r = total mod n`; as **r primeiras** parcelas recebem `q + 1`.
-  Exemplo: R$ 100,00 em 3x = 33,34 + 33,33 + 33,33.
-- A parcela k vai para o ciclo da compra + (k − 1).
-- Na conta do cartão, a compra lança o **total** na data da compra. A dívida e o
-  limite usado sobem pelo total, como nos bancos. As **parcelas** alimentam a
-  visão de comprometimento e o valor de cada fatura.
-- Alterar quantidade ou valor: só parcelas de ciclos abertos, com nova revisão e
-  auditoria. Nunca uma parcela de ciclo pago.
+**Conciliação (invariante INV-C3):** `dívida total = Σ restante das obrigações card_bill + prévia do ciclo open + parcelas futuras − créditos não aplicados`. Verificada por teste em todos os cenários-oráculo.
 
-### 5.4 Fatura
+### 5.6 Fatura
 
-- Valor da fatura do ciclo = Σ parcelas do ciclo − Σ créditos (estornos) atribuídos ao ciclo.
-- Cada ciclo fechado gera **uma obrigação** (`obligations.type = 'card_bill'`) com esse valor.
-- Pagar a fatura = `settle_obligation`, que gera `card_bill_payment` (caixa −v, cartão +v).
-- **MB-06:** pagamento **acima** do devido é recusado no Marco B. Crédito
-  rotativo e juros ficam fora: a fatura não paga continua devida e aparece
-  como atrasada.
+- Valor da fatura do ciclo = Σ parcelas válidas do ciclo − Σ créditos aplicados ao ciclo.
+- **Créditos (estornos) — MB-08 revisada:** o crédito é aplicado ao ciclo `open` na data do estorno. Se exceder a prévia daquele ciclo, o **excedente fica como crédito não aplicado** e é consumido pelos ciclos seguintes em ordem. Nunca vira saldo de caixa no B.
+- Pagamento acima do devido é recusado (MB-06, ratificada). Sem rotativo nem juros: a fatura não paga continua devida e atrasada.
 
 ---
 
-## 6. Obrigações e pagamentos (§7.4, FIN-05)
+## 6. Compras parceladas
 
-- `obligations`: titular, tipo (`card_bill`, `bill` para conta a pagar, `receivable` para previsão de receita), descrição, `due_date`, `original_amount_cents`, ajustes autorizados e origem (ciclo ou recorrência).
-- `payments`: obrigação, conta de caixa, valor (> 0), `paid_at`. Cada pagamento cria **uma** operação no razão, na mesma transação.
-- **Estado derivado**, nunca gravado à mão:
-  - `remaining = original + ajustes − Σ pagamentos válidos`
-  - `settlement_status`: `open` (sem pagamento), `partial` (pago > 0 e restante > 0), `paid` (restante = 0)
-  - `is_overdue = remaining > 0 AND due_date < hoje(America/Sao_Paulo)`. É independente do anterior, então "parcial e atrasada" fica representável (§7.4).
-- Pagamento de **conta a pagar** (`bill`) gera `expense`, com competência herdada da obrigação e caixa na data do pagamento.
-- Recebimento de **previsão** (`receivable`) gera `income`. Antes disso a previsão **não** é receita (§7.8).
-- **Concorrência:** pagamentos simultâneos na mesma obrigação travam a linha (`for update`), e a soma nunca ultrapassa o devido.
-- Aceite FIN-05: devido R$ 500, pago R$ 200 → restante R$ 300, `partial`; após o vencimento, `is_overdue = true`.
+- **Distribuição (MB-05):** `q = total ÷ n`, resto nas primeiras parcelas. Σ parcelas = total.
+- **Parcela válida** = parcela da revisão vigente da compra com `status ≠ 'superseded'`.
+- **Ajuste de parcelas** (`adjust_installments`), operação explícita e auditada:
+  - só altera parcelas em ciclos `open` ou futuros, não confirmados e sem pagamento. Parcelas em ciclo `closed`/`paid` são **preservadas**;
+  - cria nova revisão: as parcelas abertas antigas viram `superseded` e as novas são geradas;
+  - **exige** Σ (parcelas preservadas + novas) = novo total da compra. Diferença de total gera lançamento `installment_adjustment` (±Δ) no cartão, para a dívida acompanhar;
+  - recusado se deixasse divergência entre total e parcelas, ou se mexesse em parcela de ciclo fechado ou pago.
+- **Estorno em compra parcelada não cancela parcelas.** O crédito é registrado (§5.6). Se o banco de fato cancelou as parcelas futuras, o usuário registra isso como **ajuste de parcelas** com a confirmação do banco, e não como estorno. Cada fato fica registrado uma única vez.
 
 ---
 
-## 7. Transferências (§7.5) — **MB-07**
+## 7. Estornos e reembolsos (§7.6)
 
-- Um cabeçalho `transfers` gera **duas operações**, uma de cada titular (`transfer_out` e `transfer_in`), na mesma transação. Tudo ou nada.
-- Entre contas do mesmo titular: exige `create` no escopo `accounts` desse titular (o próprio, sempre).
-- **Entre titulares diferentes:** quem inicia precisa de `create` no titular de
-  **destino**, porque está lançando entrada na conta dele. **Confirmar.**
-- No consolidado que inclui as duas contas, o par se anula. Quem enxerga só uma
-  ponta vê "transferência enviada/recebida" **sem** nome, conta ou saldo do outro lado.
+- `refunds` liga o estorno à compra ou despesa original. A soma é limitada ao **líquido estornável**: `original − Σ estornos − Σ ajustes negativos`.
+- **Estorno no cartão:** crédito (§5.6). **Em conta:** entrada de caixa marcada como **recuperação de gasto**, nunca receita.
+- Consumo líquido da compra = original ± ajustes − estornos. A visão `v_purchase_net` mostra bruto, ajustes, estornos e líquido.
 
 ---
 
-## 8. Estornos, cancelamento e reversão (§7.6, §7.7)
+## 8. Cancelamento, anulação e reversão
 
-### 8.1 Estorno — **MB-08**
+### 8.1 Duas operações distintas — MB-09 revisada
 
-- Sempre ligado à compra ou despesa original (`refunds`). A soma dos estornos é ≤ o valor original, garantido com trava e `CHECK`.
-- **Estorno em cartão:** crédito na conta do cartão, atribuído ao **ciclo aberto
-  na data do estorno**, não ao ciclo da compra. Reduz a fatura desse ciclo.
-- **Estorno em conta:** entrada de caixa classificada como **recuperação de gasto**, não receita.
-- Consumo líquido da compra = original − Σ estornos. Os relatórios mostram bruto, estornos e líquido.
-- Oráculo: compra de R$ 300 com estorno de R$ 100 → consumo líquido R$ 200.
+| Operação | Quando | Efeito no razão | Data |
+|---|---|---|---|
+| **Anulação** (`void_transaction`) | o fato **não aconteceu** (erro de lançamento) e não há efeito liquidado nem conciliado | compensação espelho (`kind = 'void'`) + `status = 'voided'` | **mesma data efetiva** da origem: o saldo correto desde a origem; histórico preservado via `recorded_at` |
+| **Reversão** (`reverse_transaction`) | o fato aconteceu e houve **movimento real contrário** (dinheiro devolvido, chargeback, pagamento devolvido pelo banco) | nova operação `reversal` ligada à origem | **data em que o movimento real ocorreu** |
 
-### 8.2 Cancelamento × reversão — **MB-09**
+- **Reversão contábil × movimentação bancária:** a anulação é contábil (corrige um registro errado) e não representa dinheiro entrando ou saindo. A reversão representa dinheiro entrando ou saindo de fato. Elas aparecem com rótulos diferentes no extrato.
+- Nenhuma linha é apagada. O `status` da operação muda (`active` → `voided`/`reversed`) com `cancelled_at/by/reason`.
 
-| Situação da operação | Ação permitida | Efeito |
-|---|---|---|
-| sem efeito liquidado (ex.: despesa lançada por engano, compra cuja fatura ainda não fechou) | **cancelar** (`cancelled_at`, `cancelled_by`, `cancel_reason`) | sai das visões ativas; os lançamentos no razão passam a ser ignorados; auditoria preservada |
-| liquidada (pagamento feito, fatura paga) ou conciliada | **cancelar é recusado** → **reverter** (`reverse-transaction`) | nova operação espelho, ligada à original; o caixa já movimentado fica registrado e é anulado contabilmente |
-| compra parcelada com parcelas em ciclo pago | cancelar recusado; estorno ou reversão das parcelas **abertas** | — |
+### 8.2 Elegibilidade e dependentes
 
-Sem exclusão física pela aplicação. Importação ou sync repetidos não reativam operação cancelada (chave de idempotência).
+| Operação-alvo | Anular | Reverter | Bloqueio por dependentes |
+|---|---|---|---|
+| `expense`/`income` | se não conciliada | sim | estornos ativos ligados → anular ou reverter os estornos antes |
+| `card_purchase` | só se **nenhuma** parcela estiver em ciclo `closed`/`paid` e não houver estorno ativo | não se aplica (usar estorno ou ajuste) | parcelas em ciclo fechado ou pago; estornos ativos |
+| `card_bill_payment` / pagamento de conta | se não conciliado (ex.: lançado por engano) | sim (pagamento devolvido) | reabre a obrigação; recusado se o ciclo tiver sido confirmado com esse pagamento |
+| `refund` | se o crédito **não** tiver sido consumido por fatura paga | sim | crédito já aplicado a ciclo `paid` |
+| transferência | sempre o **par**, nunca uma ponta | sim, o par | — |
 
----
-
-## 9. Recorrências (§7.8)
-
-- `recurrence_rules`: modelo (tipo, valor, categoria, conta), frequência (**MB-10**: no B só `monthly`, com dia do mês ajustado ao último dia, e `yearly`; RRULE completa fica para depois), início, fim, estado e `revision`.
-- `recurrence_occurrences` com `UNIQUE(rule_id, period_key)` (ex.: `2026-11`). Cada ocorrência gera uma **obrigação** (`bill` ou `receivable`), não um lançamento realizado.
-- **Geração:** um job no servidor (`apply_recurring_occurrences`) cria as ocorrências até **60 dias à frente** (**MB-11**). É idempotente: rodar duas vezes cria uma única ocorrência por período.
-- **Editar** "só esta" altera a obrigação da ocorrência. "Esta e as futuras" cria nova `revision` e regenera só as ocorrências futuras não liquidadas.
-- **Pausar** interrompe novas gerações. **Cancelar** encerra e preserva o histórico.
-- **Agendador — MB-12:** usar `pg_cron` no Supabase, que roda no banco e é transacional. Verificar a disponibilidade no plano Free antes de configurar. Alternativa: GitHub Actions agendado chamando uma RPC de serviço.
+Repetir a mesma operação de sync ou importação **não reativa** uma operação anulada (idempotência por `client_operation_id`).
 
 ---
 
-## 10. Modelo de dados (lógico revisado)
+## 9. Obrigações, pagamentos e recorrências
 
-As tabelas seguem o padrão do Marco A: UUID, `created_at`/`updated_at`,
-`owner_user_id`, RLS com `can_access_owner`, gatilho de auditoria e escrita
-**só por RPC**, ou seja, sem INSERT/UPDATE direto para `authenticated`.
+### 9.1 Obrigações
 
-| Tabela | Colunas principais (além do padrão) | Constraints-chave |
-|---|---|---|
-| `categories` | `owner_user_id` (null = padrão do sistema), `parent_id`, `name`, `kind` (`expense`/`income`), `status` | nome único por titular, tipo e pai; padrão do sistema só leitura |
-| `financial_accounts` | `type`, `name`, `currency`, `opening_date`, `opening_balance_cents`, `active` | `currency = 'BRL'` no B; conta `credit_card` sem saldo inicial positivo |
-| `credit_cards` | `account_id` (1:1), `brand`, `last_four` (`^\d{4}$`), `credit_limit_cents` ≥ 0, `closing_day`/`due_day` (1–31), `active` | nunca PAN completo nem CVV |
-| `billing_cycles` | `card_id`, `starts_on`, `closes_on`, `due_on`, `status` (`open`/`closed`/`paid`), `rule_revision` | `UNIQUE(card_id, closes_on)`; sem sobreposição (exclusion constraint em `daterange`) |
-| `transactions` | `type`, `description`, `category_id`, `occurred_at`, `local_date`, `timezone`, `competence_month`, `status` (`active`/`cancelled`), `cancelled_*`, `source` (`manual`/`recurrence`/`import`), `reverses_transaction_id`, `client_operation_id` | `UNIQUE(owner_user_id, client_operation_id)`; categoria obrigatória em `income`/`expense`/`card_purchase` |
-| `ledger_entries` | `transaction_id`, `account_id`, `amount_cents` (≠ 0), `posted_on` | conta do **mesmo titular** da operação (gatilho); regra de soma por tipo (§3.3, checada ao fim da RPC) |
-| `card_purchases` | `transaction_id` (1:1), `card_id`, `total_cents` > 0, `installment_count` 1–48, `revision` | — |
-| `installments` | `purchase_id`, `sequence`, `amount_cents` > 0, `billing_cycle_id`, `status` | `UNIQUE(purchase_id, sequence)`; Σ = total (verificado na RPC e por teste) |
-| `obligations` | `type`, `description`, `due_date`, `original_amount_cents` > 0, `adjustments_cents`, `billing_cycle_id`/`occurrence_id` | uma obrigação por ciclo |
-| `payments` | `obligation_id`, `account_id` (caixa), `amount_cents` > 0, `paid_at`, `transaction_id` | Σ pagamentos ≤ devido (trava + verificação) |
-| `transfers` | `from_account_id`, `to_account_id`, `amount_cents` > 0, `executed_on`, `out_transaction_id`, `in_transaction_id`, `status` | contas diferentes |
-| `refunds` | `original_transaction_id`, `refund_transaction_id`, `amount_cents` > 0, `refunded_on` | Σ ≤ original |
-| `recurrence_rules` / `recurrence_occurrences` | conforme §9 | `UNIQUE(rule_id, period_key)` |
-| `financial_operations` | `owner_user_id`, `client_operation_id`, `kind`, `payload_hash`, `status`, `result` | `UNIQUE(owner_user_id, client_operation_id)`; mesma chave com outro payload = 409. Base também do sync offline (C) |
+- Tipos: `card_bill` (1 por ciclo fechado), `bill` (conta a pagar), `receivable` (previsão de receita).
+- Campos: `competence_month`, `due_date`, `original_amount_cents`, `adjustments_cents` (alterados só por RPC auditada), origem (`billing_cycle_id` \| `occurrence_id` \| manual).
+- **Estado derivado** (`v_obligations_status`):
+  - `remaining = original + ajustes − Σ pagamentos ativos`;
+  - `settlement_status ∈ {open, partial, paid}`;
+  - `is_overdue = remaining > 0 ∧ due_date < hoje`.
 
-**Visões (todas `security_invoker`, respeitam a RLS):** `v_account_balances`,
-`v_account_statement`, `v_card_cycles` (fatura por ciclo), `v_obligations_status`
-(estado derivado), `v_purchase_net` (bruto, estornos e líquido).
+### 9.2 Pagamentos sem dupla contagem
 
-**Escopo de permissão por tabela — MB-13:**
-- `accounts`: contas, saldos, transferências;
-- `cards`: cartões, ciclos, faturas;
+| Obrigação | Cada pagamento gera | Consumo | Caixa |
+|---|---|---|---|
+| `card_bill` | `card_bill_payment` (caixa −v, cartão +v) | **nenhum**: o consumo já foi contado na compra | −v em `paid_at` |
+| `bill` | `expense` de valor v, com `competence_month` **da obrigação** | +v na competência da obrigação | −v em `paid_at` |
+| `receivable` | `income` de valor v | — (receita realizada) | +v |
+
+- Pagamentos parciais de uma `bill` somam no máximo o devido. O consumo reconhecido de uma `bill` é a soma do que foi pago, e o saldo restante aparece só no comprometimento.
+- Anular ou reverter um pagamento reabre a obrigação, e o consumo e o caixa se corrigem pela compensação.
+- **Indicadores:** saldo, consumo, comprometimento e fatura são **views sobre o razão e os vínculos**, nunca valores gravados. Ajustes, estornos, anulações e reversões se refletem automaticamente. Os testes O28–O30 provam isso.
+
+### 9.3 Recorrências (MB-10/11 ratificadas)
+
+- Regras mensais ou anuais; `revision`; estados `active`/`paused`/`cancelled`.
+- `recurrence_occurrences` com `UNIQUE(rule_id, period_key)` e obrigação com `UNIQUE(occurrence_id)`. Gerar duas vezes resulta numa só.
+- Geração até 60 dias à frente, pelo job da §11.
+- "Esta e as futuras" → nova revisão; regenera só ocorrências futuras **sem pagamento**.
+
+---
+
+## 10. Permissões
+
+### 10.1 Escopos (MB-13 ratificada)
+
+- `accounts`: contas, saldos, extrato, transferências;
+- `cards`: cartões, ciclos, posições, faturas;
 - `transactions`: operações, parcelas, estornos, obrigações, pagamentos, recorrências.
 
-Um usuário com `transactions/read` e sem `accounts/read` vê os lançamentos do
-titular, mas **não** o saldo das contas dele. **Confirmar se é a granularidade desejada.**
+### 10.2 Transferência entre titulares — MB-07 revisada
+
+Exige do chamador **`accounts/create` nas duas pontas**: titular de origem **e** titular de destino. Sendo o próprio titular de uma ponta, a permissão é implícita nela, mas a outra exige grant explícito. Sem as duas, nada é gravado.
+
+### 10.3 Regras para todas as RPCs
+
+1. Verificar `can_access_owner` para **cada** titular envolvido e **cada** recurso referenciado: conta, cartão, categoria, obrigação.
+2. **Retorno mínimo:** quem só tem `create` recebe `{id, status}`. Saldos, faturas e posições só são devolvidos a quem tem `read` no escopo correspondente.
+3. **Erro sem vazamento:** recurso inexistente e recurso sem permissão devolvem **o mesmo** código (`P0002 not_found_or_forbidden`).
+4. `security definer` + `search_path = ''` + objetos qualificados; `EXECUTE` revogado de `public`/`anon` e concedido só a `authenticated` (RPCs de usuário) ou `service_role` (jobs).
+5. Views com `security_invoker = true`. Funções auxiliares fora do schema exposto (`private`).
+6. **Verificação automática:** um teste pgTAP percorre o catálogo e falha se alguma função `security definer` não fixar `search_path`, se alguma tiver `EXECUTE` para `public`/`anon`, se alguma view expor sem `security_invoker` ou se alguma tabela financeira não tiver RLS.
 
 ---
 
-## 11. Operações (RPCs) do Marco B
+## 11. Concorrência e jobs
 
-Todas: `security definer` com `search_path` vazio, validação de entrada,
-verificação de `can_access_owner` para o **titular-alvo**, idempotência por
-`client_operation_id`, auditoria e erros estáveis. Seguem os nomes da §11.
+### 11.1 Concorrência
 
-| RPC | Faz (numa transação) | Permissão exigida |
-|---|---|---|
-| `create_account`, `update_account`, `archive_account` | conta com saldo inicial | `accounts` create/update/cancel |
-| `create_card`, `update_card_rules` | cartão + conta passiva; recálculo de ciclos futuros (§5.2) | `cards` create/update |
-| `create_transaction` | receita ou despesa + lançamento no razão | `transactions/create` no titular; conta do titular |
-| `create_card_purchase` | compra + parcelas + ciclos + lançamento no cartão | `transactions/create` + `cards/read` |
-| `settle_obligation` | pagamento parcial ou total + operação + lançamento | `transactions/create` |
-| `transfer_funds` | cabeçalho + 2 operações + 2 lançamentos | `accounts/create` na origem e no destino |
-| `refund_transaction` | estorno ligado + crédito no cartão ou caixa | `transactions/create` |
-| `cancel_transaction` | cancelamento lógico, se elegível (§8.2) | `transactions/cancel` |
-| `reverse_transaction` | operação espelho ligada | `transactions/cancel` |
-| `apply_recurring_occurrences` | job: gera ocorrências e obrigações faltantes | serviço (sem usuário) |
-
-**CREATE sem READ (B2):** quem só tem `create` recebe **apenas** o id opaco e o
-estado da operação, nunca saldos, faturas ou outros lançamentos do titular.
-
----
-
-## 12. Casos-oráculo (viram testes pgTAP antes das telas)
-
-| # | Entrada | Esperado | Origem |
-|---|---|---|---|
-| O1 | abertura R$ 1.000 em 01/10; despesa R$ 70 em 02/10 | saldo R$ 930; abertura fora das receitas | §13, FIN-02 |
-| O2 | despesa de R$ 50 em 25/09 (antes do corte de 01/10) | saldo continua R$ 930; consumo de setembro +50 | §7.3 |
-| O3 | R$ 1.200 em 6x | 6 × R$ 200; Σ = 1.200; uma compra; consumo +1.200 uma vez | §7.2 |
-| O4 | R$ 100 em 3x | 33,34 + 33,33 + 33,33 | §13 |
-| O5 | fatura de R$ 200 paga | caixa −200; dívida −200; consumo inalterado | §13 |
-| O6 | obrigação de R$ 500, paga R$ 200 | restante 300; `partial`; atrasada após o vencimento | FIN-05 |
-| O7 | compra de R$ 300, estorno de R$ 100 | líquido 200; estorno não é receita | §7.6 |
-| O8 | transferência de R$ 100 de A para B | A −100, B +100; consolidado sem receita nem despesa | §13 |
-| O9 | cancelar pagamento já liquidado | recusado; reversão exigida e auditada | §13 |
-| O10 | mudar vencimento com fatura paga | ciclo pago intacto; só ciclos abertos recalculados | §13 |
-| O11 | job de recorrência 2× no mesmo dia | uma ocorrência por regra e período | §13 |
-| O12 | fechamento dia 31 em fevereiro de 2028 (bissexto) | fecha em 29/02/2028 | §13 |
-| O13 | 2 pagamentos simultâneos de R$ 300 numa obrigação de R$ 500 | um aceito, outro recusado | §13 |
-| O14 | Luck com `transactions/read` e sem `accounts/read` sobre Bia | vê lançamentos de Bia, não o saldo | MB-13 |
-| O15 | Luck com só `transactions/create` sobre Bia lança despesa | recebe só o id; não lê nada de Bia | B2 |
-| O16 | mesma `client_operation_id` repetida 10× | um lançamento | §13 |
-| O17 | estornos somando mais que a compra | recusado | §7.6 |
-| O18 | compra no dia do fechamento | entra no ciclo que fecha nesse dia (MB-04) | §7.2 |
-
----
-
-## 13. Decisões para validar
-
-| Código | Proposta |
+| Situação | Mecanismo |
 |---|---|
-| **MB-01** | Sinal único: positivo aumenta o saldo da conta; dívida do cartão é saldo negativo |
-| **MB-02** | Razão só com contas reais; contrapartida nominal = categoria; regra de soma por tipo |
-| **MB-03** | Abertura = saldo ao **fim** de `opening_date`; só lançamentos **posteriores** alteram o saldo |
-| **MB-04** | Compra no dia do fechamento entra no ciclo que fecha nesse dia; vencimento = primeiro `due_day` após o fechamento |
-| **MB-05** | Resto dos centavos nas primeiras parcelas; compra lança o total na conta do cartão na data da compra |
-| **MB-06** | Pagamento acima do devido recusado; rotativo e juros fora do B |
-| **MB-07** | Transferência para outro titular exige `create` no titular de destino |
-| **MB-08** | Estorno em cartão vai para o ciclo aberto na data do estorno |
-| **MB-09** | Cancelar só sem efeito liquidado; senão, reversão explícita |
-| **MB-10** | Recorrência no B: mensal e anual (sem RRULE completa) |
-| **MB-11** | Gerar ocorrências até 60 dias à frente |
-| **MB-12** | Agendador: `pg_cron` (verificar no Free) ou GitHub Actions como alternativa |
-| **MB-13** | Escopos: `accounts` (contas/saldos/transferências), `cards` (cartões/ciclos/faturas), `transactions` (o resto) |
-| **MB-14** | Categorias padrão do sistema (só leitura) + categorias próprias por titular; a lista inicial vem do Adam ou do responsável |
-| **MB-15** | Anexos de lançamento ficam para o fim do B ou para o C (Storage privado, política própria de retenção) |
+| pagamentos simultâneos na mesma obrigação | `SELECT … FOR UPDATE` na obrigação; Σ verificada após a trava |
+| estornos simultâneos na mesma compra | trava na compra; limite de estornável verificado após a trava |
+| ajuste de parcelas × pagamento de fatura × fechamento de ciclo | ordem fixa de travas: cartão → ciclos (por data) → compra → obrigação |
+| mesma `client_operation_id` em paralelo | `UNIQUE(owner, client_operation_id)`: o segundo recebe o resultado do primeiro ou 409 |
 
-## 14. Próximos passos depois da validação
+Todos são testados com conexões **reais em paralelo** (integração), como o bootstrap do Marco A.
 
-1. DDL completo nas migrations `20261016…`, com RLS, gatilhos e RPCs.
-2. Testes pgTAP O1–O18, escritos **antes** das telas e validados por mutação.
-3. Telas desktop e mobile de contas, cartões, lançamentos, faturas e pagamentos, com E2E.
-4. Evidência por FIN (02–05) e homologação com dados **fictícios**. Dados reais só após o gate §10.
+### 11.2 Jobs (MB-12)
+
+- `close_due_cycles` (fecha ciclos e cria `card_bill`) e `apply_recurring_occurrences`, ambos idempotentes.
+- **`job_runs`** registra job, início, fim, `status` (`running`/`succeeded`/`failed`), itens criados, erro **sem dados financeiros** e `request_id`. Uma trava consultiva impede duas execuções simultâneas do mesmo job.
+- Falha → `status = failed` + evento de auditoria. O alerta externo entra no gate de produção (§10.1 item 9); no B fica visível ao Admin como estado operacional, **sem valores**.
+- Agendador: `pg_cron`, se disponível no plano. Senão, GitHub Actions chamando RPC de serviço. Verificar antes de configurar.
+
+---
+
+## 12. Modelo de dados (lógico, rev. 2)
+
+Tabelas no padrão do Marco A: UUID, `owner_user_id`, RLS por `can_access_owner`, auditoria, escrita só por RPC.
+
+| Tabela | Novidades da rev. 2 |
+|---|---|
+| `categories` | — |
+| `financial_accounts` | — |
+| `credit_cards` | `closing_day_policy`, `rule_revision` |
+| `billing_cycles` | `date_source`, `confirmed_at/by`, imutável quando `closed`/`paid`/`confirmed` |
+| `cycle_discrepancies` | **nova**: ciclo, valor informado, valor calculado, diferença, `resolved_at` |
+| `transactions` | `status ∈ {active, voided, reversed}`, `reverses_transaction_id`, `voided_by_entry_group` |
+| `ledger_entries` | `kind ∈ {normal, void}`, `posted_on`, `recorded_at`; **somente-acréscimo** |
+| `card_purchases` | `revision`, `total_cents` da revisão vigente |
+| `installments` | `revision`, `status ∈ {valid, superseded}` |
+| `card_credits` | **nova**: crédito, ciclo de origem, aplicações por ciclo (o excedente fica não aplicado) |
+| `obligations` | `competence_month`, `adjustments_cents`, `UNIQUE(billing_cycle_id)`, `UNIQUE(occurrence_id)` |
+| `payments` | `status ∈ {active, voided, reversed}` |
+| `transfers` | — |
+| `refunds` | `status` |
+| `recurrence_rules` / `recurrence_occurrences` | — |
+| `financial_operations` | idempotência (já previsto) |
+| `job_runs` | **nova** |
+
+Views (todas `security_invoker`): `v_account_balances`, `v_account_statement`, `v_card_position`, `v_card_cycles`, `v_obligations_status`, `v_purchase_net`.
+
+---
+
+## 13. Matriz de invariantes do banco
+
+Mecanismos:
+- **C** = `CHECK`/`UNIQUE`/FK;
+- **T** = gatilho;
+- **R** = verificação dentro da RPC (após travas);
+- **V** = derivado por view (não armazenado);
+- **P** = teste pgTAP;
+- **I** = teste de integração com concorrência real.
+
+### Razão e saldos
+
+| ID | Invariante | Mecanismo | Teste |
+|---|---|---|---|
+| INV-L1 | `ledger_entries` nunca sofre UPDATE nem DELETE | T (recusa) + sem privilégio | P |
+| INV-L2 | todo lançamento tem `amount_cents ≠ 0` e conta do **mesmo titular** da operação | C + T | P |
+| INV-L3 | Σ dos lançamentos de cada operação obedece à regra do tipo (§3.2) | R (ao fim da RPC) + P (varredura) | P |
+| INV-L4 | anulação: compensação espelha exatamente a origem com a mesma `posted_on`; Σ(origem + compensação) = 0 | R | P |
+| INV-L5 | saldo de qualquer conta = abertura + Σ razão (pós-corte), sem tabela de saldo | V | P (O1, O2) |
+| INV-L6 | o saldo "como era visto em D" é reconstruível (`recorded_at ≤ D`) | V | P (O25) |
+
+### Cartão
+
+| ID | Invariante | Mecanismo | Teste |
+|---|---|---|---|
+| INV-C1 | Σ parcelas válidas da compra = `total_cents` da revisão vigente | R + P | P (O3, O4, O21, O22) |
+| INV-C2 | ciclos de um cartão não se sobrepõem nem têm buraco | C (exclusion `daterange`) + R | P |
+| INV-C3 | dívida total = Σ restante `card_bill` + prévia do ciclo aberto + parcelas futuras − créditos não aplicados | V + P (em todo oráculo de cartão) | P |
+| INV-C4 | ciclo `closed`/`paid`/`confirmed` não muda datas nem parcelas | T | P (O10, O20) |
+| INV-C5 | parcela de ciclo `closed`/`paid` nunca é alterada nem `superseded` | T | P (O21) |
+| INV-C6 | uma obrigação `card_bill` por ciclo fechado | C (`UNIQUE`) | P |
+| INV-C7 | crédito aplicado a ciclos ≤ valor do crédito; aplicação nunca deixa fatura negativa | R + C | P (O23) |
+| INV-C8 | o cartão nunca guarda PAN nem CVV (`last_four` = 4 dígitos) | C | P |
+
+### Obrigações e pagamentos
+
+| ID | Invariante | Mecanismo | Teste |
+|---|---|---|---|
+| INV-O1 | Σ pagamentos ativos ≤ `original + ajustes` | R (após `FOR UPDATE`) | P (O6) + I (O13) |
+| INV-O2 | `settlement_status` e `is_overdue` são derivados, nunca gravados | V | P |
+| INV-O3 | pagamento de `card_bill` não gera consumo; pagamento de `bill` gera consumo = valor pago, na competência da obrigação | R + V | P (O5, O27) |
+| INV-O4 | uma ocorrência por regra e período; uma obrigação por ocorrência | C (`UNIQUE`) | P + I (O11) |
+
+### Estornos, anulação e reversão
+
+| ID | Invariante | Mecanismo | Teste |
+|---|---|---|---|
+| INV-R1 | Σ estornos ativos ≤ líquido estornável da origem | R (após trava) | P (O17) + I (O24) |
+| INV-R2 | estorno nunca é receita; aparece como recuperação de gasto | C (tipo) + V | P (O7) |
+| INV-R3 | anulação recusada se houver dependente liquidado, conciliado ou crédito consumido | R | P (O9, O26) |
+| INV-R4 | transferência só é anulada ou revertida em par | R | P |
+| INV-R5 | `client_operation_id` repetido não cria nem reativa operação | C (`UNIQUE`) + R | P + I (O16) |
+
+### Permissão e superfície
+
+| ID | Invariante | Mecanismo | Teste |
+|---|---|---|---|
+| INV-P1 | toda tabela financeira tem RLS e nenhum privilégio de escrita para `authenticated` | C (catálogo) | P (varredura do catálogo) |
+| INV-P2 | toda função `security definer` fixa `search_path` e não tem `EXECUTE` para `public`/`anon` | catálogo | P (varredura) |
+| INV-P3 | toda view é `security_invoker` | catálogo | P (varredura) |
+| INV-P4 | transferência entre titulares exige `accounts/create` nas duas pontas | R | P (O19) |
+| INV-P5 | quem só tem `create` recebe apenas `{id, status}` | R | P (O15) |
+| INV-P6 | "inexistente" e "sem permissão" geram o mesmo erro | R | P (O31) |
+| INV-P7 | Admin não lê nem grava nenhuma tabela financeira | RLS (`can_access_owner`) | P |
+
+### Jobs
+
+| ID | Invariante | Mecanismo | Teste |
+|---|---|---|---|
+| INV-J1 | um job do mesmo tipo não roda em paralelo | trava consultiva | I (O32) |
+| INV-J2 | toda execução gera `job_runs` com estado final; falha registrada sem dados financeiros | R | P (O33) |
+
+---
+
+## 14. Casos-oráculo
+
+### Mantidos da rev. 1
+
+| # | Entrada | Esperado |
+|---|---|---|
+| O1 | abertura R$ 1.000 em 01/10; despesa R$ 70 em 02/10 | saldo R$ 930; abertura fora das receitas |
+| O2 | despesa R$ 50 em 25/09 (antes do corte) | saldo R$ 930; consumo de setembro +50 |
+| O3 | R$ 1.200 em 6x | 6 × 200; Σ = 1.200; consumo +1.200 uma vez |
+| O4 | R$ 100 em 3x | 33,34 + 33,33 + 33,33 |
+| O5 | fatura R$ 200 paga | caixa −200; dívida −200; consumo inalterado |
+| O6 | obrigação R$ 500, paga R$ 200 | restante 300; `partial`; atrasada após vencimento |
+| O7 | compra R$ 300, estorno R$ 100 | líquido 200; estorno ≠ receita |
+| O8 | transferência R$ 100 A→B | A −100, B +100; consolidado sem receita ou despesa |
+| O9 | anular pagamento conciliado | recusado; exige reversão |
+| O10 | mudar vencimento com fatura paga | ciclo pago intacto; só abertos recalculados |
+| O11 | job de recorrência 2× | 1 ocorrência e 1 obrigação |
+| O12 | fechamento dia 31, fevereiro de 2028 | fecha 29/02/2028 |
+| O13 | 2 pagamentos simultâneos de R$ 300 em obrigação de R$ 500 | um aceito, outro recusado (**I**) |
+| O14 | `transactions/read` sem `accounts/read` | vê lançamentos, não saldo |
+| O15 | só `create` sobre Bia | recebe `{id, status}`; não lê nada |
+| O16 | mesma `client_operation_id` 10× | 1 operação |
+| O17 | estornos acima da compra | recusado |
+| O18 | compra no dia do fechamento, política `current_cycle` | ciclo que fecha nesse dia |
+
+### Novos da rev. 2
+
+| # | Cenário | Esperado |
+|---|---|---|
+| O18b | compra no dia do fechamento, política `next_cycle` | entra no ciclo seguinte |
+| O19 | Luck transfere para conta de Bia **sem** `accounts/create` em Bia | recusado; nada gravado em nenhuma ponta |
+| O19b | com `create` nas duas pontas | par gravado; Bia vê "recebida" sem dados de Luck que não possa ler |
+| O20 | `confirm_billing_cycle` move fechamento de 05 para 04 com compra em 05 | compra reatribuída ao ciclo seguinte (abertos); fatura recalculada; ciclo confirmado deixa de ser recalculado por regra |
+| O20b | confirmação que moveria parcela para ciclo pago | recusada |
+| O20c | banco informa fatura R$ 1.010, sistema calcula R$ 1.000 | divergência de R$ 10 registrada; **nenhum** lançamento automático |
+| O21 | 6x de R$ 200 com 2 parcelas pagas; ajuste para 3x restantes de R$ 266,67 | 2 pagas intactas; novas somam 800 (266,67 + 266,67 + 266,66); total mantido |
+| O21b | ajuste que deixaria Σ ≠ total | recusado |
+| O22 | ajuste reduzindo o total em R$ 100 (desconto confirmado pelo banco) | lançamento `installment_adjustment` +100 no cartão; dívida e parcelas conciliadas (INV-C3) |
+| O23 | estorno de R$ 500 com prévia do ciclo aberto de R$ 300 | ciclo atual 0; R$ 200 de crédito não aplicado consumidos pelo próximo ciclo; parcelas futuras intactas |
+| O24 | 2 estornos simultâneos de R$ 200 em compra de R$ 300 | um aceito, outro recusado (**I**) |
+| O25 | despesa lançada em 02/10 e anulada em 10/10 | saldo correto em 05/10 sem a despesa; "como era visto em 05/10" mostra a despesa; razão com 2 linhas |
+| O26 | anular estorno cujo crédito já foi consumido por fatura paga | recusado |
+| O27 | conta a pagar (competência outubro) de R$ 500 paga 200 em 10/10 + 300 em 05/11 | consumo de outubro = 500 (200 + 300); caixa out −200, nov −300; nenhum duplicado |
+| O28 | O27 + anulação do pagamento de 300 | consumo de outubro = 200; obrigação `partial`; caixa de novembro corrigido |
+| O29 | compra R$ 300, estorno R$ 100, reversão do estorno (banco desfez) | líquido volta a 300; dívida e fatura corrigidas |
+| O30 | pagamento de fatura revertido pelo banco | obrigação reabre; caixa +v na data da reversão; consumo inalterado |
+| O31 | RPC com id de conta inexistente × conta de outro titular sem permissão | mesmo erro `not_found_or_forbidden` |
+| O32 | dois `close_due_cycles` simultâneos | um executa, outro sai sem efeito; `job_runs` registra ambos (**I**) |
+| O33 | job falha no meio (erro forçado) | nenhuma obrigação parcial; `job_runs.status = failed` com erro sanitizado |
+| O34 | ajuste de parcelas concorrente com pagamento da fatura do mesmo ciclo | ordem de travas garante um resultado consistente; INV-C1 e INV-C3 válidos (**I**) |
+| O35 | Admin chama qualquer RPC financeira | negado; nenhum dado retornado |
+
+---
+
+## 15. Decisões — situação
+
+| Código | Situação |
+|---|---|
+| MB-01, 02, 03, 05, 06, 10, 11, 12, 13, 14, 15 | **ratificadas** |
+| MB-04 | **revisada**: política por cartão (`closing_day_policy`), padrão `current_cycle` |
+| MB-07 | **revisada**: `accounts/create` nas duas pontas |
+| MB-08 | **revisada**: crédito no ciclo aberto, excedente não aplicado consumido pelos ciclos seguintes; não cancela parcelas |
+| MB-09 | **revisada**: anulação (compensação na data da origem) × reversão (movimento real na data do evento) |
+| **MB-16** (nova) | razão somente-acréscimo e bitemporal (`posted_on` + `recorded_at`) |
+| **MB-17** (nova) | consumo de conta a pagar reconhecido por pagamento, na competência da obrigação |
+| **MB-18** (nova) | divergência entre fatura informada e calculada é registrada, nunca compensada automaticamente |
+
+## 16. Próximos passos (após validação desta revisão)
+
+1. DDL nas migrations, com RLS, gatilhos, views `security_invoker` e RPCs.
+2. Testes O1–O35 (pgTAP e integração concorrente) e varreduras de catálogo (INV-P1 a P3), escritos **antes** das telas e validados por mutação.
+3. Telas e E2E de contas, cartões, lançamentos, faturas e pagamentos.
+4. Evidência por FIN-02 a FIN-05. Tudo com dados **fictícios**.
