@@ -1,5 +1,7 @@
 # Marco B — Proposta técnica (rev. 3, aprovada para implementação)
 
+> **Incorporada à Especificação v1.2 (§20), que prevalece.** Este documento permanece como memória de cálculo e matriz detalhada de invariantes e oráculos.
+
 - **Estado:** rev. 3. Decisões MB-01 a MB-18 aprovadas como direcionamento arquitetural, com os ajustes finais da **§17 (adendo rev. 3), que prevalece sobre as seções anteriores**. Início das migrations e dos testes autorizado; a implementação segue sujeita à revisão de resultados e à homologação.
 - **Base:** Especificação v1.1 (§6, §7.1–7.8, §8 FIN-02 a FIN-05, §11, §13) + avaliação da rev. 1.
 - **Escopo:** só Marco B. **Não** antecipa BI, IA nem PWA. A conciliação com extratos (Marco D) entra só como ponto de extensão (campos e estados), sem importação.

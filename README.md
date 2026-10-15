@@ -3,7 +3,7 @@
 > *Seu dinheiro em movimento. Seus planos em crescimento.* (nome e marca provisórios)
 
 Aplicação web/PWA para controle financeiro individual e familiar. A construção
-segue a [Especificação Técnica e Funcional v1.1](docs/Fluvi_Especificacao_Tecnica_Funcional_v1.1.md),
+segue a [Especificação Técnica e Funcional v1.2](docs/Fluvi_Especificacao_Tecnica_Funcional_v1.2.md),
 dividida em marcos (A–E).
 
 ## Estado atual
