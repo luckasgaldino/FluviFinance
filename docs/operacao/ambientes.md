@@ -48,9 +48,7 @@ pnpm --filter @fluvi/tests test:remote                         # Auth hospedado 
 
 ## Ações manuais pendentes no painel do Supabase
 
-- [ ] **Desligar o provedor de telefone (SMS/Twilio)**: aparece habilitado no
-  hospedado e o `config push` não consegue desligá-lo. Mitigado, porque o
-  signup está desligado.
+- [x] **Provedor de telefone desligado** (15/10/2026). Verificado em `/auth/v1/settings` (`external.phone = false`) e por tentativa de OTP recusada. O `config diff` continua mostrando `sms.twilio.enabled = true`, mas isso indica só o provedor de SMS selecionado, não o login por telefone ligado.
 - [ ] Configurar **SMTP próprio**, que exige escolher um provedor e um domínio
   remetente. Sem isso, convites e recuperação não chegam a e-mails reais.
 - [x] `site_url` e redirects do dev apontam para https://fluvi-dev.pages.dev (`[remotes.fluvi-dev]` no config.toml).
