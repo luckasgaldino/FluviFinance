@@ -77,3 +77,22 @@ O M2 só passou a ser detectado depois de reescrever O13 e O24 com transações 
 - **Exclusão de identidade com histórico financeiro** é bloqueada pelo razão somente-acréscimo. Um pedido de exclusão de titular (LGPD) vai exigir um **procedimento de anonimização** próprio, a definir no gate de produção.
 - **Restauração:** o schema `cron` não está no backup. Após restaurar um ambiente real, os jobs precisam ser reagendados (procedimento a acrescentar em `backup-restauracao.md`).
 - **E2E:** a falha intermitente observada uma vez fica sob acompanhamento no CI.
+
+---
+
+## Adendo — conformidade com a Especificação v1.2 (C-1, C-2, C-3), 15/10/2026
+
+Migration `20261016000600_fin_v12_conformity.sql` + testes `08_fin_v12_conformity.test.sql` (17).
+
+| Item | Implementação | Teste | Mutação |
+|---|---|---|---|
+| C-1 (§20.4) | ajuste preserva parcelas de ciclos fechados **e confirmados**; parcelas novas só em ciclos abertos e estimados (pula confirmados) | recusa abaixo do preservado; parcelas de ciclos confirmados (atual e futuro) intactas; novas em 12/2026, 02/2027, 03/2027; EQ-1 = 0 | "ajustável" ignorando confirmação → 5 testes falham |
+| C-2 (§20.9) | recálculo só de datas; nenhum item movido; valida datas, lacunas, sobreposição e EQ-1; relata e registra (`cycle_assignment_reviews`) compras fora da nova janela | compra de 04/11 com fechamento novo em 03/11: não movida, relatada e registrada; compra dentro da janela não relatada; sem lacuna; EQ-1 = 0 | relatório desligado → 3 testes falham |
+| C-3 (§20.12) | `private.ensure_job_schedules(p_active)`: remove por nome e recria; opção desligado | 2 execuções → uma entrada por job, nenhum `fluvi-%` órfão; desligado/habilitado | nomes duplicados → 3 testes falham. Observação: no `pg_cron` 1.6, `cron.schedule(nome, …)` já substitui por nome; o `unschedule` é defesa adicional |
+
+| Comando | Resultado |
+|---|---|
+| `pnpm db:lint` | sem erros |
+| `pnpm test:db` | **310/310 PASS** |
+| `pnpm test:integration` | **52/52 PASS** |
+| `pnpm backup:drill` | **PASS**; pgTAP no restaurado com os 3 testes de C-3 **pulados** (skip com motivo): o ambiente restaurado isolado não tem `pg_cron` por desenho (§20.12) |

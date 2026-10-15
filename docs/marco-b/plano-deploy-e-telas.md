@@ -6,7 +6,7 @@
 
 ---
 
-## 1. Pré-condição: itens de conformidade (§20.17)
+## 1. Pré-condição: itens de conformidade (§20.17) — C-1, C-2 e C-3 concluídos em 15/10/2026
 
 Antes do deploy, implementar e testar no repositório (branch `marco-b/nucleo-financeiro`):
 
@@ -39,7 +39,7 @@ O C-4 (anonimização) não bloqueia o deploy no `fluvi-dev`, porque lá só há
 ### 2.3 Aplicação
 
 1. `supabase db push` com as 5 migrations do Marco B, numa janela única.
-2. Habilitar `pg_cron` e agendar os jobs pelo script idempotente (C-3), **desligados** até o passo 2.5.
+2. Agendar os jobs **desligados** com `select private.ensure_job_schedules(false);` (C-3); habilitar só após a execução controlada do passo 2.4.4.
 3. Nenhuma alteração de Auth, Edge Function ou frontend nesta etapa.
 
 ### 2.4 Testes de segurança e integridade no hospedado

@@ -925,9 +925,9 @@ A comparação com o código atual identificou ajustes necessários antes do dep
 
 | Código | Requisito v1.2 | Situação atual | Ajuste |
 |---|---|---|---|
-| C-1 | §20.4: preservar parcelas de ciclo **confirmado** | `adjust_installments` aceita ciclo aberto confirmado | restringir elegíveis a ciclos estimados; teste novo |
-| C-2 | §20.9: relatório de consistência no recálculo | valida sobreposição, datas e EQ-1; **não** lista itens fora da nova janela | acrescentar relatório e registro de divergência; teste novo |
-| C-3 | §20.12: agendamento idempotente | agendamento só pela migration | script idempotente + teste (rodar 2×) |
+| C-1 | §20.4: preservar parcelas de ciclo **confirmado** | **implementado e testado** (migration `…0600`, pgTAP 08, mutação detectada) | — |
+| C-2 | §20.9: relatório de consistência no recálculo | **implementado e testado**: valida datas, lacunas, sobreposição e EQ-1; relata e registra em `cycle_assignment_reviews` sem mover itens (pgTAP 08, mutação detectada) | — |
+| C-3 | §20.12: agendamento idempotente | **implementado e testado**: `private.ensure_job_schedules(p_active)` (pgTAP 08, inclusive detecção de jobs duplicados) | — |
 | C-4 | §20.11: anonimização | não implementada | implementar e testar antes do gate (validação jurídica) |
 
 ### 20.18 Changelog v1.1 → v1.2 (rastreabilidade)

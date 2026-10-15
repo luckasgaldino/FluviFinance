@@ -60,7 +60,7 @@ A pasta `backups/` está no `.gitignore` e nunca é versionada.
 - [ ] Revalidar exclusões feitas depois do backup (pedidos de titulares): reaplicar antes de liberar o acesso.
 - [ ] Revalidar grants, administradores e status de perfis contra o registro de incidentes.
 - [ ] Confirmar que o ambiente restaurado não envia e-mail nem push antes da troca de DNS ou chaves.
-- [ ] Reagendar os jobs (o schema `cron` não está no backup): `select cron.schedule(...)` conforme a migration `20261016000500_fin_rpcs_settlement.sql`. Só depois de confirmar que o ambiente restaurado é o oficial.
+- [ ] Reagendar os jobs (o schema `cron` não está no backup), de forma idempotente e **desligados**: `select private.ensure_job_schedules(false);`. Executar cada job uma vez manualmente (`call private.run_job('close_due_cycles'); call private.run_job('generate_recurrences');`), conferir `job_runs` = `succeeded` e a EQ-1 de todos os cartões (`select count(*) from public.credit_cards k where (private.card_reconciliation(k.id)).difference_cents <> 0` = 0). Só então habilitar: `select private.ensure_job_schedules(true);`. Fazer isso apenas no ambiente oficial.
 - [ ] Registrar a evidência em `docs/evidencias/` (sem dados pessoais).
 
 ## Pendências (não cumpridas por este documento)
