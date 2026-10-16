@@ -2,7 +2,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
-select plan(24);
+select plan(27);
 
 insert into auth.users (id, instance_id, aud, role, email) values
   ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'a@fluvi.test'),
@@ -103,6 +103,14 @@ select is(pg_temp.consumo('2026-11-01'), 3000::bigint, 'consumo de novembro: só
 select is(pg_temp.debt(), 118000::bigint, 'dívida: 450 + 380 + janeiro (200 + 150); EQ-1 conciliado');
 select is((select count(*)::int from public.card_import_lines where outcome = 'matched'), 2, 'linhas reconhecidas registradas');
 
+-- parcelamento de fatura (fatura anterior parcelada): dívida rolada, nunca consumo, mesmo na parcela 1
+select is((public.import_card_invoice(gen_random_uuid(), pg_temp.id('card'), '2027-01-01', jsonb_build_array(
+  pg_temp.line('hash-jan-parcfat-0001', '2026-12-01', 'Parcelamento de Fatura (1/Dezembro)', 10000, 'Outros', 1, 3)
+    || jsonb_build_object('debt_only', true)), false) ->> 'created')::int, 1, 'parcelamento de fatura é importado');
+select is((select type::text from public.transactions where description = 'Parcelamento de Fatura (1/Dezembro)'), 'card_opening_balance',
+  'entra como saldo anterior (dívida), mesmo sendo a parcela 1');
+select is(pg_temp.consumo('2026-12-01'), 0::bigint, 'e não vira consumo');
+
 -- validações
 select throws_ok($$ select pg_temp.import('2026-12-01', jsonb_build_array(
   pg_temp.line('hash-dez-extra-00001', '2026-11-20', 'Extra', 100, 'Outros'))) $$,
@@ -115,7 +123,7 @@ select throws_ok($$ select pg_temp.import('2027-01-01', jsonb_build_array(
   pg_temp.line('hash-jan-ruim-000002', '2026-12-20', 'X', 100, 'Outros', 3, 2))) $$, '23514', null, 'parcela 3/2 é recusada');
 select throws_ok($$ select pg_temp.import('2027-01-01', jsonb_build_array(
   pg_temp.line('hash-jan-ruim-000003', '2026-12-20', 'X', 0, 'Outros'))) $$, '23514', null, 'valor zero é recusado');
-select is((select count(*)::int from public.transactions where family_id = '00000000-0000-0000-0000-0000000000f1'), 4,
+select is((select count(*)::int from public.transactions where family_id = '00000000-0000-0000-0000-0000000000f1'), 5,
   'importação recusada não deixa nada pela metade');
 
 -- isolamento

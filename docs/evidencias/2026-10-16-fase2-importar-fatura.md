@@ -39,3 +39,19 @@
 | E2E | novo `import-flow`: prévia, pagamento ignorado, possível duplicado desmarcado, categoria sugerida, importação, reimportação sem gravar nada |
 
 **Bateria local:** pgTAP **461/461** (14 arquivos), integração 58/58, E2E **59/59**, unitários **51/51**, build e `db lint` sem avisos, restauração **PASS** (461 pgTAP).
+
+## OFX do Nubank (arquivo real enviado pelo responsável em 16/10)
+
+O arquivo foi inspecionado **só na estrutura**: tags, formatos e contagens, com dígitos e textos mascarados. Nenhum valor ou descrição foi lido ou copiado, e os testes usam um OFX **fictício** de mesma estrutura. O que se aprendeu:
+
+- OFX de **fatura de cartão** (`CREDITCARDMSGSRSV1`), SGML com tags fechadas, `DTPOSTED` em `AAAAMMDDhhmmss[-3:BRT]`.
+- **Compras vêm negativas** (`DEBIT`); pagamento e estorno vêm positivos (`CREDIT`).
+- O `FITID` serve de chave de deduplicação, mas **o banco às vezes o repete**: 47 FITIDs para 48 lançamentos. A repetição ganha um sufixo estável (`#2`).
+- **"Parcelamento de Fatura (…) - k/n"** é a fatura anterior parcelada: **dívida rolada, nunca consumo novo**. Ela entra sempre como saldo anterior, inclusive na parcela 1. Migration `20261017001000_import_financing.sql`.
+- Conferência no arquivo real, só com contagens: 48 lidos (35 compras, 10 parcelas, 1 parcelamento de fatura, 1 pagamento, 1 estorno), 48 chaves únicas, vencimento 2026-01 pelo nome do arquivo.
+
+**Correções encontradas pelos testes:**
+- reenviar o arquivo logo após importar usava a lista antiga do cache e não marcava "já importado" (o servidor já ignorava). Agora a tela relê o estado no momento em que o arquivo é escolhido;
+- a sugestão de categoria podia sair vazia se o arquivo fosse escolhido antes de as categorias carregarem. Agora ela é calculada com os dados atualizados.
+
+**Deploy:** a execução automatizada de deploy desta branch aplicou no fluvi-dev **as duas migrações** (`…0900` e `…1000`, que já estava pronta na pasta), com backup e restauração antes (`2026-10-16T14-11-38-686Z`, PASS com 437 pgTAP) e **pgTAP hospedado 464/464 PASS**. A publicação do site ficou para depois do commit desta correção.

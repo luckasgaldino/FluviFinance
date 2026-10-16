@@ -32,7 +32,7 @@ async function openImport(page: Page) {
   await page.getByRole("link", { name: "Nubank" }).click();
   await page.getByRole("link", { name: "Importar fatura" }).click();
   await expect(page.getByRole("heading", { name: "Importar fatura", level: 1 })).toBeVisible();
-  await page.getByLabel("Fatura (CSV)").setInputFiles({
+  await page.getByLabel("Fatura (OFX ou CSV)").setInputFiles({
     name: `Nubank_${nextMonth()}-15.csv`, mimeType: "text/csv", buffer: Buffer.from(csv()),
   });
 }
@@ -74,7 +74,7 @@ test("importar fatura: prévia, duplicado manual, pagamento ignorado e reimporta
   await expect(page.getByText("Importação concluída: 3 lançamento(s) novo(s), 0 parcela(s) reconhecida(s)")).toBeVisible();
 
   // reenviar o mesmo arquivo: tudo já importado, nada a gravar
-  await page.getByLabel("Fatura (CSV)").setInputFiles({
+  await page.getByLabel("Fatura (OFX ou CSV)").setInputFiles({
     name: `Nubank_${nextMonth()}-15.csv`, mimeType: "text/csv", buffer: Buffer.from(csv()),
   });
   await expect(items.getByRole("listitem").filter({ hasText: "já importado" })).toHaveCount(3);

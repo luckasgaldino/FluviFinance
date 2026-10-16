@@ -1,19 +1,22 @@
-// Leitura de fatura de cartão exportada pelo banco (CSV). Roda no aparelho: o arquivo não é
-// enviado nem guardado; só os lançamentos confirmados na prévia são gravados.
-// Formatos aceitos (Nubank): "date,title,amount" e "date,category,title,amount"; separador
-// vírgula ou ponto e vírgula; valor com ponto ou vírgula decimal; data AAAA-MM-DD ou DD/MM/AAAA.
+// Leitura de fatura de cartão exportada pelo banco. Roda no aparelho: o arquivo não é enviado
+// nem guardado; só os lançamentos confirmados na prévia são gravados.
+// Formatos aceitos: OFX de fatura de cartão (Nubank) e CSV "date,title,amount" ou
+// "date,category,title,amount" (separador vírgula ou ponto e vírgula; valor com ponto ou vírgula;
+// data AAAA-MM-DD ou DD/MM/AAAA).
 
 export type InvoiceLine = {
-  /** posição no arquivo (para a chave de deduplicação) */
+  /** posição no arquivo */
   index: number;
   date: string;                 // AAAA-MM-DD
   title: string;                // como veio do banco
-  description: string;          // sem o sufixo "Parcela k/n"
-  amountCents: number;          // positivo = débito na fatura
+  description: string;          // sem o sufixo de parcela
+  amountCents: number;          // sempre positivo; o tipo diz se é débito na fatura
   kind: "purchase" | "installment" | "payment" | "credit";
   k?: number;
   n?: number;
-  /** texto estável para a chave de deduplicação (data, título, valor e ocorrência) */
+  /** parcelamento da fatura anterior: dívida rolada, nunca consumo novo */
+  debtOnly?: boolean;
+  /** chave estável para deduplicação (FITID no OFX; data, título, valor e ocorrência no CSV) */
   key: string;
 };
 
@@ -67,6 +70,24 @@ function parseBankDate(raw: string): string | null {
 }
 
 const PARCEL = /\s*[-–—]?\s*Parcela\s+(\d{1,2})\s*\/\s*(\d{1,2})\s*$/i;
+// "Parcelamento de Fatura (…) - 2/6": a fatura anterior parcelada (dívida rolada, já consumida)
+const FINANCING = /^(Parcelamento de Fatura.*?)\s*[-–—]\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*$/i;
+
+/** Classifica uma linha; `amount` positivo = débito na fatura, negativo = crédito. */
+function classify(index: number, date: string, title: string, amount: number, key: string): InvoiceLine {
+  const financing = title.match(FINANCING);
+  if (financing && amount > 0) {
+    return { index, date, title, description: financing[1].trim(), amountCents: amount, kind: "installment",
+      k: Number(financing[2]), n: Number(financing[3]), debtOnly: true, key };
+  }
+  const parcel = amount > 0 ? title.match(PARCEL) : null;
+  const description = (parcel ? title.replace(PARCEL, "").trim() : title) || title;
+  const kind: InvoiceLine["kind"] = amount < 0
+    ? (/pagamento/i.test(title) ? "payment" : "credit")
+    : parcel ? "installment" : "purchase";
+  return { index, date, title, description, amountCents: Math.abs(amount), kind,
+    ...(parcel ? { k: Number(parcel[1]), n: Number(parcel[2]) } : {}), key };
+}
 
 export function parseInvoiceCsv(text: string): ParsedInvoice {
   const clean = text.replace(/^﻿/, "");
@@ -96,21 +117,47 @@ export function parseInvoiceCsv(text: string): ParsedInvoice {
     const base = `${date}|${title}|${amount}`;
     const occurrence = (seen.get(base) ?? 0) + 1;
     seen.set(base, occurrence);
-    const parcel = title.match(PARCEL);
-    const description = parcel ? title.replace(PARCEL, "").trim() : title;
-    const kind: InvoiceLine["kind"] = amount < 0
-      ? (/pagamento/i.test(title) ? "payment" : "credit")
-      : parcel ? "installment" : "purchase";
-    lines.push({
-      index: idx, date, title, description: description || title, amountCents: Math.abs(amount), kind,
-      ...(parcel ? { k: Number(parcel[1]), n: Number(parcel[2]) } : {}),
-      key: `${base}|${occurrence}`,
-    });
+    lines.push(classify(idx, date, title, amount, `${base}|${occurrence}`));
   });
   return { lines, format: header.join(",") };
 }
 
-/** Vencimento (AAAA-MM) pelo nome do arquivo do Nubank: "Nubank_2026-11-05.csv". */
+const ofxField = (block: string, tag: string) =>
+  block.match(new RegExp(`<${tag}>([^<\\r\\n]*)`, "i"))?.[1]?.trim() ?? "";
+
+/** OFX de fatura de cartão: débitos (compras) vêm negativos; créditos (pagamento, estorno) positivos. */
+export function parseInvoiceOfx(text: string): ParsedInvoice {
+  if (!/<CREDITCARDMSGSRSV1>/i.test(text)) {
+    throw new InvoiceFormatError("Este OFX não é de fatura de cartão. Envie o OFX da fatura (não o do extrato da conta).");
+  }
+  const blocks = text.split(/<STMTTRN>/i).slice(1).map((b) => b.split(/<\/STMTTRN>/i)[0]);
+  const seen = new Map<string, number>();
+  const fitSeen = new Map<string, number>();
+  const lines = blocks.map((b, idx) => {
+    const dt = ofxField(b, "DTPOSTED").match(/^(\d{4})(\d{2})(\d{2})/);
+    const raw = parseBankAmount(ofxField(b, "TRNAMT"));
+    const title = ofxField(b, "MEMO") || ofxField(b, "NAME");
+    if (!dt || raw === null || !title) throw new InvoiceFormatError(`Lançamento ${idx + 1} do OFX não pôde ser lido.`);
+    const date = `${dt[1]}-${dt[2]}-${dt[3]}`;
+    const fitid = ofxField(b, "FITID");
+    // o banco às vezes repete o FITID: a repetição ganha um sufixo (estável na reexportação)
+    const fitCount = fitid ? (fitSeen.get(fitid) ?? 0) + 1 : 0;
+    if (fitid) fitSeen.set(fitid, fitCount);
+    const base = `${date}|${title}|${raw}`;
+    const occurrence = (seen.get(base) ?? 0) + 1;
+    seen.set(base, occurrence);
+    return classify(idx, date, title, -raw,
+      fitid ? (fitCount > 1 ? `ofx|${fitid}#${fitCount}` : `ofx|${fitid}`) : `${base}|${occurrence}`);
+  }).filter((l) => l.amountCents !== 0);
+  return { lines, format: "ofx-cartao" };
+}
+
+/** Escolhe o leitor pelo conteúdo (OFX ou CSV). */
+export function parseInvoiceFile(text: string): ParsedInvoice {
+  return /<OFX>/i.test(text) ? parseInvoiceOfx(text) : parseInvoiceCsv(text);
+}
+
+/** Vencimento (AAAA-MM) pelo nome do arquivo do Nubank: "Nubank_2026-11-05.csv" ou ".ofx". */
 export function dueMonthFromFileName(name: string): string | null {
   const m = name.match(/(\d{4})-(\d{2})-\d{2}/);
   return m ? `${m[1]}-${m[2]}` : null;

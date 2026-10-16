@@ -1,9 +1,9 @@
-// Importar fatura de cartão (Fase 2): o CSV do banco é lido no aparelho (não é enviado nem
+// Importar fatura de cartão (Fase 2): o OFX ou CSV do banco é lido no aparelho (não é enviado nem
 // guardado). Prévia com categoria sugerida, deduplicação (linhas já importadas e possíveis
 // duplicados de lançamentos manuais) e parcelas reconhecidas. Pagamentos e estornos ficam de fora.
-import { dueMonthFromFileName, formatBRL, formatDate, InvoiceFormatError, parseInvoiceCsv, type InvoiceLine } from "@fluvi/domain";
+import { dueMonthFromFileName, formatBRL, formatDate, InvoiceFormatError, parseInvoiceFile, type InvoiceLine } from "@fluvi/domain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import { Link, useParams } from "react-router";
 import { Alert, PageTitle } from "../../components/ui";
 import { rpc, type Card, type Category } from "../../lib/api";
@@ -99,14 +99,16 @@ export function ImportInvoice() {
     },
   });
 
-  const catByName = useMemo(() => new Map(categories.data?.map((c) => [norm(c.name), c.id])), [categories.data]);
-  const fallback = catByName.get(norm("Outros")) ?? categories.data?.[0]?.id ?? "";
-
-  function suggest(description: string): string {
-    const past = existing.data?.purchases.find((p) => p.category_id && norm(p.description) === norm(description));
-    if (past?.category_id) return past.category_id;
-    const hit = KEYWORDS.find(([re]) => re.test(description));
-    return (hit && catByName.get(norm(hit[1]))) || fallback;
+  // sugestão de categoria: histórico da família (mesma descrição) e, sem histórico, palavras-chave
+  function suggester(cats: Category[], purchases: Existing[]) {
+    const byName = new Map(cats.map((c) => [norm(c.name), c.id]));
+    const fallback = byName.get(norm("Outros")) ?? cats[0]?.id ?? "";
+    return (description: string): string => {
+      const past = purchases.find((p) => p.category_id && norm(p.description) === norm(description));
+      if (past?.category_id) return past.category_id;
+      const hit = KEYWORDS.find(([re]) => re.test(description));
+      return (hit && byName.get(norm(hit[1]))) || fallback;
+    };
   }
 
   async function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -114,25 +116,31 @@ export function ImportInvoice() {
     setError(""); setResult(null); setRows(null);
     if (!file || !card.data) return;
     try {
-      const { lines } = parseInvoiceCsv(await file.text());
+      const { lines } = parseInvoiceFile(await file.text());
       setFileName(file.name);
       const debits = lines.filter((l) => l.kind === "purchase" || l.kind === "installment");
       setIgnored(lines.filter((l) => l.kind === "payment" || l.kind === "credit"));
       const latest = debits.map((l) => l.date).sort().at(-1) ?? "";
       const next = latest ? new Date(Date.UTC(Number(latest.slice(0, 4)), Number(latest.slice(5, 7)), 1)).toISOString().slice(0, 7) : "";
       setDue(dueMonthFromFileName(file.name) ?? next);
-      const hashes = existing.data?.hashes ?? new Set<string>();
-      const manual = existing.data?.purchases.filter((p) => !p.imported) ?? [];
+      // estado atual do servidor (não o cache): reenviar logo após importar marca tudo como já importado
+      const [fresh, cats] = await Promise.all([
+        existing.refetch().then((r) => r.data),
+        categories.data ? Promise.resolve(categories.data) : categories.refetch().then((r) => r.data ?? []),
+      ]);
+      const suggest = suggester(cats, fresh?.purchases ?? []);
+      const hashes = fresh?.hashes ?? new Set<string>();
+      const manual = fresh?.purchases.filter((p) => !p.imported) ?? [];
       setRows(await Promise.all(debits.map(async (l) => {
         const hash = await sha256(`${card.data!.id}|${l.key}`);
         const imported = hashes.has(hash);
-        const duplicate = !imported && (l.kind === "purchase" || l.k === 1)
+        const duplicate = !imported && !l.debtOnly && (l.kind === "purchase" || l.k === 1)
           && manual.some((p) => p.amount === l.amountCents && daysApart(p.local_date, l.date) <= 3);
         return { ...l, hash, imported, duplicate, include: !imported && !duplicate, category: suggest(l.description) };
       })));
       setOp(crypto.randomUUID());
     } catch (err) {
-      setError(err instanceof InvoiceFormatError ? err.message : "Não foi possível ler o arquivo. Envie o CSV da fatura exportado pelo banco.");
+      setError(err instanceof InvoiceFormatError ? err.message : "Não foi possível ler o arquivo. Envie o OFX ou CSV da fatura exportado pelo banco.");
     }
   }
 
@@ -144,7 +152,7 @@ export function ImportInvoice() {
     mutationFn: () => rpc<ImportResult>("import_card_invoice", {
       p_op: op, p_card: id, p_due_month: `${due}-01`, p_close: true,
       p_lines: selected.map((r) => ({ hash: r.hash, date: r.date, description: r.description, kind: r.kind,
-        k: r.k ?? null, n: r.n ?? null, amount_cents: r.amountCents, category: r.category })),
+        k: r.k ?? null, n: r.n ?? null, amount_cents: r.amountCents, category: r.category, debt_only: !!r.debtOnly })),
     }),
     onSuccess: (r) => {
       setResult(r);
@@ -161,7 +169,7 @@ export function ImportInvoice() {
     <>
       <PageTitle>Importar fatura</PageTitle>
       <p className="muted">
-        {card.data.name}: envie o CSV da fatura exportado pelo banco. O arquivo é lido no seu aparelho e não é enviado
+        {card.data.name}: envie a fatura exportada pelo banco (OFX ou CSV). O arquivo é lido no seu aparelho e não é enviado
         nem guardado; só os lançamentos que você confirmar são gravados. Pagamentos e estornos não são importados.
       </p>
       {result && (
@@ -175,8 +183,8 @@ export function ImportInvoice() {
       <section className="card stack" aria-labelledby="arquivo">
         <h2 id="arquivo">Arquivo</h2>
         <div className="field">
-          <label htmlFor="invoice-file">Fatura (CSV)</label>
-          <input id="invoice-file" type="file" accept=".csv,text/csv" onChange={onFile} disabled={!existing.data || !categories.data} />
+          <label htmlFor="invoice-file">Fatura (OFX ou CSV)</label>
+          <input id="invoice-file" type="file" accept=".ofx,.csv,text/csv,application/x-ofx" onChange={onFile} disabled={!existing.data || !categories.data} />
           {fileName && <span className="hint">{fileName}</span>}
         </div>
         <Alert kind="error">{error}</Alert>
@@ -206,6 +214,7 @@ export function ImportInvoice() {
                     <span className="muted">
                       {formatDate(r.date)}
                       {r.k && ` · parcela ${r.k}/${r.n}`}
+                      {r.debtOnly && " · parcelamento de fatura (dívida, não é gasto novo)"}
                       {r.imported && " · já importado"}
                       {r.duplicate && " · possível duplicado de lançamento manual"}
                     </span>
@@ -213,7 +222,7 @@ export function ImportInvoice() {
                 </label>
                 <div className="actions">
                   <span className="money">{formatBRL(r.amountCents)}</span>
-                  {(r.kind === "purchase" || r.k === 1) && !r.imported && (
+                  {(r.kind === "purchase" || r.k === 1) && !r.debtOnly && !r.imported && (
                     <select aria-label={`Categoria de ${r.description}`} value={r.category}
                       onChange={(e) => update(r.hash, { category: e.target.value })}>
                       {categories.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -225,7 +234,7 @@ export function ImportInvoice() {
           </ul>
           <p className="muted">
             Parcela 1/n cria a compra inteira e já coloca as próximas parcelas nas faturas seguintes. Parcela de compra
-            anterior às faturas importadas entra como saldo anterior (não vira gasto do mês). Parcelas já previstas são
+            anterior às faturas importadas e parcelamento de fatura entram como saldo anterior (dívida; não viram gasto do mês). Parcelas já previstas são
             reconhecidas e não são lançadas de novo.
           </p>
           <div className="row" style={{ alignItems: "center" }}>
