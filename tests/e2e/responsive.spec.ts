@@ -1,7 +1,7 @@
 // 360 CSS px sem overflow horizontal, com acessibilidade (v2.2: tela discreta, menu em gaveta, áreas protegidas).
 import { expect, test } from "@playwright/test";
 import {
-  createActiveUser, expectAccessible, expectNoHorizontalOverflow, freshTotp, login, PASSWORD, sql, testEmail, unlockFinance,
+  createActiveUser, createFinanceUser, expectAccessible, expectNoHorizontalOverflow, freshTotp, login, PASSWORD, sql, testEmail, unlockFinance,
 } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
@@ -10,7 +10,7 @@ const userEmail = testEmail("e2e-mobile");
 const adminEmail = testEmail("e2e-mobile-admin");
 
 test.beforeAll(async () => {
-  await createActiveUser(userEmail);
+  await createFinanceUser(userEmail);
   const adminId = await createActiveUser(adminEmail);
   await sql("insert into public.administrators (user_id) values ($1)", [adminId]);
 });
@@ -72,7 +72,7 @@ test("painel administrativo cabe em 360 px", async ({ page }) => {
   await page.getByRole("button", { name: "Confirmar" }).click();
 
   for (const [link, heading] of [["Usuários", "Usuários"], ["Núcleos e vínculos", "Núcleos e vínculos"],
-    ["Permissões", "Permissões"], ["Auditoria", "Auditoria"]]) {
+    ["Auditoria", "Auditoria"]]) {
     await page.getByRole("button", { name: "Abrir menu" }).click();
     await page.getByRole("dialog", { name: "Menu" }).getByRole("link", { name: link }).click();
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();

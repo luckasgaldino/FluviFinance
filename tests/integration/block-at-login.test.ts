@@ -38,7 +38,7 @@ describe("Bloqueio no login", () => {
   it("após o bloqueio: o access token já emitido é negado pela RLS (negação após o Auth)", async () => {
     expect((await setStatus("blocked")).error).toBeNull();
     expect((await user.rpc("whoami")).data).toMatchObject({ status: "blocked", is_financial_user: false });
-    expect((await user.rpc("accessible_owners", { p_scope: "all", p_operation: "read" })).data).toEqual([]);
+    expect((await user.rpc("my_families")).data).toEqual([]);
   });
 
   it("após o bloqueio: refresh falha (sessões encerradas)", async () => {

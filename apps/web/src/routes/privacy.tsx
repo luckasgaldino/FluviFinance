@@ -9,6 +9,7 @@ import { Alert, Field, PageTitle } from "../components/ui";
 import { rpc } from "../lib/api";
 import { isDesktop } from "../lib/device";
 import { errorMessage } from "../lib/errors";
+import { useFamily } from "../lib/family";
 import { useFinanceLock } from "../lib/finance-lock";
 import { useSession } from "../lib/session";
 import { supabase } from "../lib/supabase";
@@ -44,8 +45,18 @@ export function RequireUnlock({ children }: { children?: ReactNode }) {
     return () => events.forEach((e) => window.removeEventListener(e, touch));
   }, [unlocked, touch]);
 
+  const { active, loading } = useFamily();
   if (!unlocked) return <UnlockScreen />;
+  if (!loading && !active) return <NoFamily />;
   return <>{children ?? <Outlet />}</>;
+}
+
+export function NoFamily() {
+  return (
+    <Alert kind="info">
+      Você ainda não faz parte de uma família. Peça ao administrador para vincular sua conta.
+    </Alert>
+  );
 }
 
 function UnlockScreen() {
@@ -103,17 +114,18 @@ const kinds: { value: Kind; label: string }[] = [
   { value: "transfer", label: "Transferência" },
 ];
 
-function useQuickOptions(userId: string | undefined) {
+function useQuickOptions(family: string) {
   return useQuery({
-    queryKey: ["quick", "options", userId],
-    enabled: !!userId,
+    queryKey: ["quick", "options", family],
+    enabled: !!family,
     staleTime: 60_000,
     queryFn: async (): Promise<QuickOptions> => {
       const [acc, cards, cats] = await Promise.all([
-        supabase.from("financial_accounts").select("id, name").eq("owner_user_id", userId!).eq("active", true)
+        supabase.from("financial_accounts").select("id, name").eq("family_id", family).eq("active", true)
           .neq("type", "credit_card").order("name"),
-        supabase.from("credit_cards").select("id, name").eq("owner_user_id", userId!).eq("active", true).order("name"),
-        supabase.from("categories").select("id, name, kind").eq("active", true).order("name"),
+        supabase.from("credit_cards").select("id, name").eq("family_id", family).eq("active", true).order("name"),
+        supabase.from("categories").select("id, name, kind").eq("active", true)
+          .or(`family_id.is.null,family_id.eq.${family}`).order("name"),
       ]);
       for (const r of [acc, cards, cats]) if (r.error) throw r.error;
       return { accounts: acc.data as Option[], cards: cards.data as Option[], categories: cats.data as QuickOptions["categories"] };
@@ -145,8 +157,9 @@ function Select({ id, label, name, groups, error, loading, value, onChange }: {
 }
 
 export function QuickEntry() {
-  const { me } = useSession();
-  const options = useQuickOptions(me?.user_id);
+  const { active, loading: familyLoading } = useFamily();
+  const family = active?.family_id ?? "";
+  const options = useQuickOptions(family);
   const [kind, setKind] = useState<Kind>("expense");
   const [op, setOp] = useState(() => crypto.randomUUID());  // idempotência: repetir o envio não duplica
   const [formKey, setFormKey] = useState(0);
@@ -206,7 +219,7 @@ export function QuickEntry() {
       } });
     } else {
       save.mutate({ fn: "create_transaction", args: {
-        p_op: op, p_owner: me?.user_id, p_type: kind,
+        p_op: op, p_family: family, p_type: kind,
         p_account: kind === "expense" ? payWith.slice("acc:".length) : get("account"),
         p_amount_cents: amount, p_description: get("description"), p_category: get("category"), p_local_date: date,
         p_competence_month: competence,
@@ -221,6 +234,7 @@ export function QuickEntry() {
   return (
     <>
       <PageTitle>Novo lançamento</PageTitle>
+      {!familyLoading && !active && <NoFamily />}
       {saved && <Alert kind="success">{saved}</Alert>}
       <form key={formKey} className="card stack" onSubmit={onSubmit} noValidate aria-label="Novo lançamento">
         <fieldset className="segmented" style={{ margin: 0 }}>

@@ -1,4 +1,4 @@
-// Marco B — Compras no cartão e parcelamentos (FIN-03/FIN-04): nova compra com prévia das
+// Compras no cartão e parcelamentos (FF-04/FF-05): nova compra com prévia das
 // parcelas (mesma distribuição do banco), detalhe com bruto/estornos/líquido, parcelas por
 // fatura, estorno, ajuste de parcelas (§20.4) e anulação.
 import { businessToday, formatBRL, formatDate, parseBRL, splitCents } from "@fluvi/domain";
@@ -8,12 +8,13 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { Alert, Field, PageTitle, StatusBadge } from "../../components/ui";
 import { nums, rpc, txnStatusLabel, type Category, type Installment } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
+import { useFamilyId } from "../../lib/family";
 import { supabase } from "../../lib/supabase";
 import { Money } from "./Accounts";
 import { useCardPositions } from "./Cards";
 
 function InstallmentPreview({ amount, n }: { amount: number | null; n: number }) {
-  if (!amount || amount <= 0 || !(n >= 1 && n <= 48)) return null;
+  if (!amount || amount <= 0 || !(n >= 1 && n <= 36)) return null;
   const parts = splitCents(amount, n);
   const same = parts.every((p) => p === parts[0]);
   return (
@@ -32,7 +33,7 @@ export function NewPurchase() {
   const categories = useQuery({
     queryKey: ["fin", "categories"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("categories").select("id, name, kind, owner_user_id").eq("active", true).order("name");
+      const { data, error } = await supabase.from("categories").select("id, name, kind, family_id").eq("active", true).order("name");
       if (error) throw error;
       return data as Category[];
     },
@@ -44,8 +45,8 @@ export function NewPurchase() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const amount = parseBRL(amountText);
-  const owner = cards.data?.find((c) => c.card_id === cardId)?.owner_user_id;
-  const cats = categories.data?.filter((c) => c.kind === "expense" && (c.owner_user_id === null || c.owner_user_id === owner)) ?? [];
+  const family = useFamilyId();
+  const cats = categories.data?.filter((c) => c.kind === "expense" && (c.family_id === null || c.family_id === family)) ?? [];
 
   const create = useMutation({
     mutationFn: (args: Record<string, unknown>) => rpc<{ id: string }>("create_card_purchase", args),
@@ -59,7 +60,7 @@ export function NewPurchase() {
     const next: Record<string, string> = {};
     if (!cardId) next.card = "Escolha o cartão.";
     if (amount === null || amount <= 0) next.amount = "Informe um valor maior que zero, no formato 1.234,56.";
-    if (!(n >= 1 && n <= 48)) next.n = "Parcelas de 1 a 48.";
+    if (!(n >= 1 && n <= 36)) next.n = "Parcelas de 1 a 36.";
     if (!String(f.get("description")).trim()) next.description = "Informe uma descrição.";
     if (!f.get("category")) next.category = "Escolha uma categoria.";
     setErrors(next);
@@ -92,7 +93,7 @@ export function NewPurchase() {
             </div>
             <Field label="Valor total (R$)" name="amount" inputMode="decimal" autoComplete="off" placeholder="0,00"
               value={amountText} onChange={(e) => setAmountText(e.target.value)} error={errors.amount} />
-            <Field label="Parcelas" name="n" type="number" min={1} max={48} value={n}
+            <Field label="Parcelas" name="n" type="number" min={1} max={36} value={n}
               onChange={(e) => setN(Number(e.target.value))} error={errors.n} />
           </div>
           <InstallmentPreview amount={amount} n={n} />
@@ -245,7 +246,7 @@ export function PurchaseDetail() {
             </p>
             <div className="row">
               <Field label="Novo total da compra (R$)" name="total" inputMode="decimal" defaultValue={(p.gross_cents / 100).toFixed(2).replace(".", ",")} />
-              <Field label="Parcelas restantes" name="count" type="number" min={0} max={48} defaultValue={Math.max(valid.length - preserved.length, 1)} />
+              <Field label="Parcelas restantes" name="count" type="number" min={0} max={36} defaultValue={Math.max(valid.length - preserved.length, 1)} />
             </div>
             <Field label="Motivo" name="reason" required maxLength={200} />
           </>)}

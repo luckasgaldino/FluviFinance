@@ -19,7 +19,7 @@ const byCode: Record<string, string> = {
   operation_conflict: "Esta operação já foi registrada com outros dados.",
   invalid_email: "E-mail inválido.",
   invalid_display_name: "Informe um nome com até 80 caracteres.",
-  P0002: "Não encontrado ou sem permissão para este titular.",
+  P0002: "Não encontrado ou sem permissão.",
   "22023": "Dados inválidos. Revise os campos.",
   "22P02": "Dados inválidos. Revise os campos.",
 };

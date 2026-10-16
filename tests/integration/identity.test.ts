@@ -147,7 +147,7 @@ describe("Admin com MFA (aal2) provisiona por convite real", () => {
     const dora = await sessionFromLink(data.properties.action_link);
 
     expect((await dora.rpc("whoami")).data).toMatchObject({ status: "pending", is_financial_user: false });
-    expect((await dora.rpc("accessible_owners", { p_scope: "all", p_operation: "read" })).data).toEqual([]);
+    expect((await dora.rpc("my_families")).data).toEqual([]);
     expect((await dora.from("households").select("id")).data).toEqual([]);
     expect((await dora.from("profiles").select("display_name")).data).toEqual([{ display_name: "Dora" }]);
   });
@@ -236,46 +236,39 @@ describe("Isolamento entre Luck e Bia via PostgREST", () => {
     expect(service.error).not.toBeNull();
   });
 
-  it("sem grant, Luck só acessa os próprios dados", async () => {
-    const { data } = await luck.rpc("accessible_owners", { p_scope: "transactions", p_operation: "read" });
-    expect(data?.map((o: { owner_user_id: string }) => o.owner_user_id)).toEqual([ids.luck]);
+  it("v2.2: Luck e Bia, membros ativos do mesmo núcleo, compartilham a mesma família", async () => {
+    const families = async (c: SupabaseClient) =>
+      ((await c.rpc("my_families")).data as { family_id: string }[] | null)?.map((f) => f.family_id);
+    expect(await families(luck)).toEqual([householdId]);
+    expect(await families(bia)).toEqual([householdId]);
   });
 
-  it("grant concedido vale e revogação corta acesso com o MESMO token", async () => {
+  it("v2.2: não há permissão individual; suspender o vínculo corta a família com o MESMO token", async () => {
     const tokenBefore = await accessToken(luck);
-    const grantRequest = randomUUID();
     const grant = await admin.rpc("admin_set_data_grant", {
-      p_request_id: grantRequest, p_household_id: householdId, p_owner: ids.bia, p_grantee: ids.luck,
+      p_request_id: randomUUID(), p_household_id: householdId, p_owner: ids.bia, p_grantee: ids.luck,
       p_scope: "transactions", p_can_read: true, p_can_create: false, p_can_update: false, p_can_cancel: false,
       p_expected_revision: 0,
     });
-    expect(grant.error).toBeNull();
+    expect(grant.error?.code).toBe("42501");
 
-    const withGrant = await luck.rpc("accessible_owners", { p_scope: "transactions", p_operation: "read" });
-    expect(withGrant.data?.map((o: { owner_user_id: string }) => o.owner_user_id).sort()).toEqual([ids.luck, ids.bia].sort());
-    expect((await luck.rpc("accessible_owners", { p_scope: "goals", p_operation: "read" })).data).toHaveLength(1);
-    expect((await bia.rpc("accessible_owners", { p_scope: "transactions", p_operation: "read" })).data).toHaveLength(1);
-
-    const stale = await admin.rpc("admin_set_data_grant", {
-      p_request_id: randomUUID(), p_household_id: householdId, p_owner: ids.bia, p_grantee: ids.luck,
-      p_scope: "transactions", p_can_read: false, p_can_create: false, p_can_update: false, p_can_cancel: false,
-      p_expected_revision: 0,
+    const suspendRequest = randomUUID();
+    const suspend = await admin.rpc("admin_set_household_member", {
+      p_request_id: suspendRequest, p_household_id: householdId, p_user_id: ids.luck, p_status: "suspended",
     });
-    expect(stale.error?.code).toBe("40001");
-
-    const revoke = await admin.rpc("admin_set_data_grant", {
-      p_request_id: randomUUID(), p_household_id: householdId, p_owner: ids.bia, p_grantee: ids.luck,
-      p_scope: "transactions", p_can_read: false, p_can_create: false, p_can_update: false, p_can_cancel: false,
-      p_expected_revision: 1,
-    });
-    expect(revoke.error).toBeNull();
-    expect(revoke.data.revision).toBe(2);
-
+    expect(suspend.error).toBeNull();
     expect(await accessToken(luck)).toBe(tokenBefore);
-    expect((await luck.rpc("accessible_owners", { p_scope: "transactions", p_operation: "read" })).data).toHaveLength(1);
+    expect((await luck.rpc("my_families")).data).toEqual([]);
+    expect((await bia.rpc("my_families")).data).toHaveLength(1);
 
-    const audit = await admin.from("audit_events").select("actor_id, action").eq("request_id", grantRequest);
-    expect(audit.data).toEqual([{ actor_id: ids.admin, action: "insert" }]);
+    const back = await admin.rpc("admin_set_household_member", {
+      p_request_id: randomUUID(), p_household_id: householdId, p_user_id: ids.luck, p_status: "active",
+    });
+    expect(back.error).toBeNull();
+    expect((await luck.rpc("my_families")).data).toHaveLength(1);
+
+    const audit = await admin.from("audit_events").select("actor_id, action").eq("request_id", suspendRequest);
+    expect(audit.data).toEqual([{ actor_id: ids.admin, action: "update" }]);
   });
 
   it("metadata editado pelo próprio usuário não concede papel de Admin", async () => {
@@ -288,26 +281,19 @@ describe("Isolamento entre Luck e Bia via PostgREST", () => {
     expect(attempt.error?.code).toBe("42501");
   });
 
-  it("titular bloqueado: beneficiário perde acesso e o bloqueado perde tudo, com sessões abertas (B1, B9)", async () => {
-    const grant = await admin.rpc("admin_set_data_grant", {
-      p_request_id: randomUUID(), p_household_id: householdId, p_owner: ids.bia, p_grantee: ids.luck,
-      p_scope: "transactions", p_can_read: true, p_can_create: false, p_can_update: false, p_can_cancel: false,
-    });
-    expect(grant.error).toBeNull();
-    expect((await luck.rpc("accessible_owners", { p_scope: "transactions", p_operation: "read" })).data).toHaveLength(2);
-
+  it("membro bloqueado: a família continua para os demais e o bloqueado perde tudo, com sessões abertas (B1, B9)", async () => {
     const block = await admin.rpc("admin_set_user_status", {
       p_request_id: randomUUID(), p_user_id: ids.bia, p_status: "blocked",
     });
     expect(block.error).toBeNull();
 
-    expect((await luck.rpc("accessible_owners", { p_scope: "transactions", p_operation: "read" })).data).toHaveLength(1);
+    expect((await luck.rpc("my_families")).data).toHaveLength(1);
     expect((await bia.rpc("whoami")).data).toMatchObject({ status: "blocked", is_financial_user: false });
-    expect((await bia.rpc("accessible_owners", { p_scope: "all", p_operation: "read" })).data).toEqual([]);
+    expect((await bia.rpc("my_families")).data).toEqual([]);
   });
 
-  it("Admin não aparece como titular financeiro acessível", async () => {
-    const { data } = await admin.rpc("accessible_owners", { p_scope: "all", p_operation: "read" });
+  it("Admin não pertence a nenhuma família financeira", async () => {
+    const { data } = await admin.rpc("my_families");
     expect(data).toEqual([]);
   });
 });

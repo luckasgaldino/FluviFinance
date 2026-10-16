@@ -1,7 +1,7 @@
 // Marco B — telas de Cartões e Compras (FIN-03): cadastro, posições, compra parcelada com
 // prévia, estorno, ajuste de parcelas, anulação, validação, isolamento e acessibilidade.
 import { expect, test, type Page } from "@playwright/test";
-import { createActiveUser, expectAccessible, loginUser, PASSWORD, testEmail } from "./helpers";
+import { createFinanceUser, expectAccessible, loginUser, PASSWORD, testEmail } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -11,8 +11,8 @@ let cardUrl = "";
 let purchaseUrl = "";
 
 test.beforeAll(async () => {
-  await createActiveUser(owner);
-  await createActiveUser(other);
+  await createFinanceUser(owner);
+  await createFinanceUser(other);
 });
 
 const nav = (page: Page, name: string) =>

@@ -2,7 +2,7 @@
 // anulação × reversão, validação de valor, isolamento e acessibilidade.
 // Identidades fictícias com histórico financeiro não são apagadas (razão somente-acréscimo).
 import { expect, test } from "@playwright/test";
-import { createActiveUser, expectAccessible, loginUser, PASSWORD, testEmail } from "./helpers";
+import { createFinanceUser, expectAccessible, loginUser, PASSWORD, testEmail } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -11,8 +11,8 @@ const other = testEmail("e2e-fin-outro");
 let accountUrl = "";
 
 test.beforeAll(async () => {
-  await createActiveUser(owner);
-  await createActiveUser(other);
+  await createFinanceUser(owner);
+  await createFinanceUser(other);
 });
 
 test("Contas: criar conta com saldo inicial", async ({ page }) => {

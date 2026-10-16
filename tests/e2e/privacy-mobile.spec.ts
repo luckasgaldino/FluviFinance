@@ -2,14 +2,14 @@
 // Fase R1: a senha é conferida pelo Auth, mas o estado do desbloqueio ainda é do cliente; os
 // testes de API direta (PRIV-09) e do banco entram na fase R3.
 import { expect, test, type Page } from "@playwright/test";
-import { createActiveUser, expectAccessible, login, PASSWORD, testEmail, unlockFinance } from "./helpers";
+import { createFinanceUser, expectAccessible, login, PASSWORD, testEmail, unlockFinance } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
 const user = testEmail("e2e-priv");
 
 test.beforeAll(async () => {
-  await createActiveUser(user);
+  await createFinanceUser(user);
 });
 
 const menu = async (page: Page, item: string) => {

@@ -2,8 +2,6 @@
 // Nada aqui vem do banco nem representa pessoas reais; a integração chega na fase R4.
 import { addMonths, businessToday, monthStart } from "@fluvi/domain";
 
-export const DEMO_FAMILY = "Minha família";
-
 export type DemoAccount = { name: string; type: string; balance: number };
 export type DemoCard = { name: string; current: number; dueDay: number; limit: number; next: number };
 export type DemoPurchase = { description: string; card: string; total: number; count: number; paid: number; firstMonth: string };

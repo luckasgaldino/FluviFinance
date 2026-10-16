@@ -1,22 +1,22 @@
-// Marco B — Lançamentos (FIN-04): lista por mês, novo lançamento (receita/despesa),
+// Lançamentos (FF-02/FF-10): lista por mês, novo lançamento (receita/despesa),
 // anulação (erro de registro) e reversão (movimento real contrário).
 import { addMonths, businessToday, formatDate, monthLabel, monthRange, monthStart, parseBRL } from "@fluvi/domain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Alert, Field, PageTitle, StatusBadge } from "../../components/ui";
-import { owners, rpc, txnDirection, txnStatusLabel, txnTypeLabel, type Category, type Txn } from "../../lib/api";
+import { rpc, txnDirection, txnStatusLabel, txnTypeLabel, type Category, type Txn } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
-import { useSession } from "../../lib/session";
+import { useFamilyId } from "../../lib/family";
 import { supabase } from "../../lib/supabase";
-import { Money, useAccounts, useOwnerNames } from "./Accounts";
+import { Money, useAccounts } from "./Accounts";
 
 function useCategories() {
   return useQuery({
     queryKey: ["fin", "categories"],
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.from("categories").select("id, name, kind, owner_user_id").eq("active", true).order("name");
+      const { data, error } = await supabase.from("categories").select("id, name, kind, family_id").eq("active", true).order("name");
       if (error) throw error;
       return data as Category[];
     },
@@ -81,7 +81,7 @@ function ActionPanel({ action, onClose }: { action: Action; onClose: (msg?: stri
 // Lista
 // ---------------------------------------------------------------------------
 export function Transactions() {
-  const { session, me } = useSession();
+  const family = useFamilyId();
   const [params, setParams] = useSearchParams();
   const month = monthStart(params.get("mes") ?? businessToday());
   const basis = params.get("base") === "caixa" ? "caixa" : "competencia";
@@ -89,14 +89,15 @@ export function Transactions() {
   const [feedback, setFeedback] = useState(params.get("ok") ?? "");
   const categories = useCategories();
   const accounts = useAccounts();
-  const names = useOwnerNames();
 
   const txns = useQuery({
-    queryKey: ["fin", "txns", session?.user.id, month, basis],
+    queryKey: ["fin", "txns", family, month, basis],
+    enabled: !!family,
     queryFn: async () => {
       const range = monthRange(month);
       let q = supabase.from("transactions")
-        .select("id, owner_user_id, type, status, description, amount_cents, category_id, account_id, local_date, occurred_at, competence_month, note, cancel_reason");
+        .select("id, family_id, type, status, description, amount_cents, category_id, account_id, local_date, occurred_at, competence_month, note, cancel_reason")
+        .eq("family_id", family);
       q = basis === "caixa" ? q.gte("local_date", range.from).lte("local_date", range.to) : q.eq("competence_month", month);
       const { data, error } = await q.order("local_date", { ascending: false }).order("created_at", { ascending: false });
       if (error) throw error;
@@ -155,7 +156,6 @@ export function Transactions() {
                       {formatDate(t.local_date)} · {txnTypeLabel[t.type]}
                       {t.category_id && ` · ${catName.get(t.category_id) ?? ""}`}
                       {accName.get(t.account_id) && ` · ${accName.get(t.account_id)}`}
-                      {t.owner_user_id !== me?.user_id && ` · de ${names.data?.get(t.owner_user_id) ?? "outro titular"}`}
                     </span>
                     {t.cancel_reason && <span className="muted">Motivo: {t.cancel_reason}</span>}
                   </div>
@@ -191,18 +191,15 @@ export function Transactions() {
 export function NewTransaction() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { me } = useSession();
+  const family = useFamilyId();
   const [op] = useState(() => crypto.randomUUID());  // idempotência: repetir o envio não duplica
   const [type, setType] = useState<"expense" | "income">("expense");
-  const [owner, setOwner] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
-  const creatable = useQuery({ queryKey: ["fin", "owners", "transactions", "create"], queryFn: () => owners("transactions", "create") });
   const categories = useCategories();
   const accounts = useAccounts();
-  const titular = owner || me?.user_id || "";
-  const ownAccounts = accounts.data?.filter((a) => a.owner_user_id === titular && a.active) ?? [];
-  const cats = categories.data?.filter((c) => c.kind === type && (c.owner_user_id === null || c.owner_user_id === titular)) ?? [];
+  const ownAccounts = accounts.data?.filter((a) => a.active) ?? [];
+  const cats = categories.data?.filter((c) => c.kind === type && (c.family_id === null || c.family_id === family)) ?? [];
 
   const create = useMutation({
     mutationFn: (args: Record<string, unknown>) => rpc("create_transaction", args),
@@ -227,7 +224,7 @@ export function NewTransaction() {
     if (Object.keys(next).length) return;
     const date = String(form.get("date"));
     create.mutate({
-      p_op: op, p_owner: titular, p_type: type, p_account: String(form.get("account")),
+      p_op: op, p_family: family, p_type: type, p_account: String(form.get("account")),
       p_amount_cents: amount, p_description: String(form.get("description")).trim(),
       p_category: String(form.get("category")), p_local_date: date,
       p_competence_month: `${String(form.get("competence") || date.slice(0, 7))}-01`,
@@ -275,7 +272,7 @@ export function NewTransaction() {
             </div>
           </div>
           {ownAccounts.length === 0 && accounts.isSuccess && (
-            <Alert kind="info">Nenhuma conta deste titular disponível para você. <Link to="/contas">Cadastre uma conta</Link>.</Alert>
+            <Alert kind="info">Nenhuma conta cadastrada nesta família. <Link to="/contas">Cadastre uma conta</Link>.</Alert>
           )}
         </section>
 
@@ -287,14 +284,6 @@ export function NewTransaction() {
             <Field label="Competência (mês de consumo)" name="competence" type="month" defaultValue={businessToday().slice(0, 7)}
               hint="Por padrão, o mês da data." />
           </div>
-          {(creatable.data?.length ?? 0) > 1 && (
-            <div className="field">
-              <label htmlFor="txn-owner">Titular</label>
-              <select id="txn-owner" value={titular} onChange={(e) => setOwner(e.target.value)}>
-                {creatable.data?.map((o) => <option key={o.owner_user_id} value={o.owner_user_id}>{o.display_name}</option>)}
-              </select>
-            </div>
-          )}
         </section>
 
         <section className="card stack" aria-labelledby="adicionais">

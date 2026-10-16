@@ -9,6 +9,9 @@ insert into auth.users (id, instance_id, aud, role, email) values
   ('00000000-0000-0000-0000-00000000001c', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'luck@fluvi.test');
 update public.profiles set provisioned_at = now() where user_id = '00000000-0000-0000-0000-00000000001c';
 update auth.users set email_confirmed_at = now(), encrypted_password = 'x' where id = '00000000-0000-0000-0000-00000000001c';
+-- v2.2: a família é a titular; aqui com o mesmo UUID do Luck, para manter as fixtures legíveis.
+insert into public.households (id, name) values ('00000000-0000-0000-0000-00000000001c', 'Família do Luck');
+insert into public.household_members (household_id, user_id) values ('00000000-0000-0000-0000-00000000001c', '00000000-0000-0000-0000-00000000001c');
 
 create temp table k (name text primary key, id uuid, j jsonb);
 grant all on k to public;
@@ -19,7 +22,7 @@ create function pg_temp.putj(p text, v jsonb) returns jsonb language sql as $$
 create function pg_temp.id(p text) returns uuid language sql as $$ select id from k where name = p $$;
 create function pg_temp.j(p text) returns jsonb language sql as $$ select j from k where name = p $$;
 create function pg_temp.cat() returns uuid language sql as $$
-  select id from public.categories where owner_user_id is null and name = 'Mercado' and kind = 'expense' $$;
+  select id from public.categories where family_id is null and name = 'Mercado' and kind = 'expense' $$;
 create function pg_temp.luck() returns void language plpgsql as $$
 begin
   execute 'reset role';

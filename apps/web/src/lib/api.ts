@@ -40,28 +40,6 @@ export type AdminUser = {
 
 export type Household = { id: string; name: string; active: boolean };
 export type Member = { household_id: string; user_id: string; status: "active" | "suspended" | "removed" };
-export type Grant = {
-  id: string;
-  household_id: string;
-  owner_user_id: string;
-  grantee_user_id: string;
-  resource_scope: Scope;
-  can_read: boolean;
-  can_create: boolean;
-  can_update: boolean;
-  can_cancel: boolean;
-  revision: number;
-};
-export type Scope = "all" | "accounts" | "cards" | "transactions" | "goals" | "reports";
-
-export const scopeLabel: Record<Scope, string> = {
-  all: "Tudo",
-  accounts: "Contas",
-  cards: "Cartões",
-  transactions: "Lançamentos",
-  goals: "Metas",
-  reports: "Relatórios",
-};
 
 export const statusLabel: Record<string, string> = {
   pending: "Pendente",
@@ -84,16 +62,14 @@ export const accountTypeLabel: Record<AccountType, string> = {
 
 export type AccountBalance = {
   account_id: string;
-  owner_user_id: string;
+  family_id: string;
   name: string;
   type: AccountType;
   active: boolean;
   balance_cents: number;
 };
 
-export type Owner = { owner_user_id: string; display_name: string; is_self: boolean };
-
-export type Category = { id: string; name: string; kind: "expense" | "income"; owner_user_id: string | null };
+export type Category = { id: string; name: string; kind: "expense" | "income"; family_id: string | null };
 
 export type TxnType =
   | "income" | "expense" | "card_purchase" | "card_bill_payment" | "bill_payment"
@@ -116,7 +92,7 @@ export const txnStatusLabel: Record<string, string> = { active: "Ativo", voided:
 
 export type Txn = {
   id: string;
-  owner_user_id: string;
+  family_id: string;
   type: TxnType;
   status: "active" | "voided" | "reversed";
   description: string;
@@ -145,13 +121,10 @@ export const txnDirection: Partial<Record<TxnType, 1 | -1>> = {
   expense: -1, card_purchase: -1, card_bill_payment: -1, bill_payment: -1, transfer_out: -1,
 };
 
-export const owners = (scope: Scope, operation: "read" | "create") =>
-  rpc<Owner[]>("accessible_owners", { p_scope: scope, p_operation: operation });
-
 // Cartões (Marco B)
 export type CardPosition = {
   card_id: string;
-  owner_user_id: string;
+  family_id: string;
   name: string;
   credit_limit_cents: number;
   debt_total_cents: number;
@@ -164,7 +137,7 @@ export type CardPosition = {
 
 export type Card = {
   id: string;
-  owner_user_id: string;
+  family_id: string;
   account_id: string;
   name: string;
   brand: string | null;

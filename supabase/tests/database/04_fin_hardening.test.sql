@@ -62,16 +62,17 @@ insert into auth.users (id, instance_id, aud, role, email) values
   ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'h@fluvi.test');
 update public.profiles set provisioned_at = now() where user_id = '00000000-0000-0000-0000-0000000000f1';
 update auth.users set email_confirmed_at = now(), encrypted_password = 'x' where id = '00000000-0000-0000-0000-0000000000f1';
-insert into public.financial_accounts (id, owner_user_id, name, type, opening_date)
+insert into public.households (id, name) values ('00000000-0000-0000-0000-0000000000f1', 'Família H');
+insert into public.financial_accounts (id, family_id, name, type, opening_date)
 values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000f1', 'Conta', 'checking', '2026-10-01');
-insert into public.transactions (id, owner_user_id, type, description, amount_cents, category_id, account_id,
+insert into public.transactions (id, family_id, type, description, amount_cents, category_id, account_id,
   local_date, competence_month, created_by)
 values ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000f1', 'expense', 'x', 100,
-  (select id from public.categories where owner_user_id is null and name = 'Mercado'),
+  (select id from public.categories where family_id is null and name = 'Mercado'),
   '00000000-0000-0000-0000-0000000000a1', '2026-10-02', '2026-10-01', '00000000-0000-0000-0000-0000000000f1');
 
 -- INV-L7: o instante de conhecimento é do banco, nunca do cliente
-insert into public.ledger_entries (transaction_id, owner_user_id, account_id, amount_cents, posted_on, recorded_at)
+insert into public.ledger_entries (transaction_id, family_id, account_id, amount_cents, posted_on, recorded_at)
 values ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000f1',
         '00000000-0000-0000-0000-0000000000a1', -100, '2026-10-02', '2000-01-01');
 select ok((select recorded_at > now() - interval '1 minute' from public.ledger_entries
@@ -83,20 +84,21 @@ select throws_ok($$ update public.ledger_entries set amount_cents = -1 $$, '4250
 select throws_ok($$ delete from public.ledger_entries $$, '42501', null, 'razão não aceita DELETE');
 select throws_ok($$ delete from public.transactions $$, '42501', null, 'operações não são apagadas');
 
--- INV-L2: lançamento em conta de outro titular é recusado pela FK composta
+-- INV-L2: lançamento em conta de outra família é recusado pela FK composta
 insert into auth.users (id, instance_id, aud, role, email) values
   ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'h2@fluvi.test');
-insert into public.financial_accounts (id, owner_user_id, name, type, opening_date)
+insert into public.households (id, name) values ('00000000-0000-0000-0000-0000000000f2', 'Família H2');
+insert into public.financial_accounts (id, family_id, name, type, opening_date)
 values ('00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-0000000000f2', 'Conta 2', 'checking', '2026-10-01');
 select throws_ok(
-  $$ insert into public.ledger_entries (transaction_id, owner_user_id, account_id, amount_cents, posted_on)
+  $$ insert into public.ledger_entries (transaction_id, family_id, account_id, amount_cents, posted_on)
      values ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000f1',
              '00000000-0000-0000-0000-0000000000a2', -1, '2026-10-02') $$,
-  '23503', null, 'lançamento só em conta do mesmo titular da operação');
+  '23503', null, 'lançamento só em conta da mesma família da operação');
 
 -- INV-C8: cartão nunca guarda número completo
 select throws_ok(
-  $$ insert into public.credit_cards (owner_user_id, account_id, name, last_four, closing_day, due_day)
+  $$ insert into public.credit_cards (family_id, account_id, name, last_four, closing_day, due_day)
      values ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000a1', 'X', '4111111111111111', 5, 15) $$,
   null, null, 'last_four aceita só 4 dígitos');
 

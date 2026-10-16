@@ -152,6 +152,26 @@ export async function createActiveUser(email: string, password = PASSWORD): Prom
   return data.user.id;
 }
 
+// v2.2: dados financeiros pertencem a uma família. Cria a família com os membros ativos;
+// sem `id`, gera um novo.
+export async function createFamily(name: string, members: string[], id?: string): Promise<string> {
+  const [row] = await sql<{ id: string }>(
+    "insert into public.households (id, name) values (coalesce($1::uuid, gen_random_uuid()), $2) returning id",
+    [id ?? null, name.slice(0, 80)],
+  );
+  for (const user of members) {
+    await sql("insert into public.household_members (household_id, user_id) values ($1, $2)", [row.id, user]);
+  }
+  return row.id;
+}
+
+// Usuário financeiro de teste com família própria (mesmo UUID do usuário, para fixtures legíveis).
+export async function createFinanceUser(email: string, password = PASSWORD): Promise<string> {
+  const id = await createActiveUser(email, password);
+  await createFamily(`Família ${email.split("@")[0]}`, [id], id);
+  return id;
+}
+
 // Segue um link de verificação do Auth (convite, magic link) e devolve um
 // cliente com a sessão obtida, como o navegador faria.
 export async function sessionFromLink(link: string): Promise<SupabaseClient> {

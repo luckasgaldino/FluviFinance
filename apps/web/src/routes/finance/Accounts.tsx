@@ -1,39 +1,28 @@
-// Marco B — Contas (FIN-02): saldos, nova conta com abertura e extrato.
+// Contas e saldos (FF-03): saldos da família ativa, nova conta com abertura e extrato.
 import { businessToday, formatBRL, formatDate, parseBRL } from "@fluvi/domain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
 import { Alert, Field, PageTitle } from "../../components/ui";
 import {
-  accountTypeLabel, owners, rpc, txnTypeLabel,
+  accountTypeLabel, rpc, txnTypeLabel,
   type AccountBalance, type AccountType, type LedgerEntry, type Txn,
 } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
-import { useSession } from "../../lib/session";
+import { useFamilyId } from "../../lib/family";
 import { supabase } from "../../lib/supabase";
 
 export function useAccounts() {
-  const { session } = useSession();
+  const family = useFamilyId();
   return useQuery({
-    queryKey: ["fin", "accounts", session?.user.id],
+    queryKey: ["fin", "accounts", family],
+    enabled: !!family,
     queryFn: async () => {
       const { data, error } = await supabase.from("v_account_balances")
-        .select("account_id, owner_user_id, name, type, active, balance_cents")
-        .neq("type", "credit_card").order("name");
+        .select("account_id, family_id, name, type, active, balance_cents")
+        .eq("family_id", family).neq("type", "credit_card").order("name");
       if (error) throw error;
       return (data as AccountBalance[]).map((a) => ({ ...a, balance_cents: Number(a.balance_cents) }));
-    },
-  });
-}
-
-export function useOwnerNames() {
-  const { session } = useSession();
-  return useQuery({
-    queryKey: ["fin", "owner-names", session?.user.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("user_id, display_name");
-      if (error) throw error;
-      return new Map((data ?? []).map((p) => [p.user_id as string, p.display_name as string]));
     },
   });
 }
@@ -46,8 +35,7 @@ export function Money({ cents, signed = false }: { cents: number; signed?: boole
 
 function NewAccountForm({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient();
-  const { me } = useSession();
-  const creatable = useQuery({ queryKey: ["fin", "owners", "accounts", "create"], queryFn: () => owners("accounts", "create") });
+  const family = useFamilyId();
   const [op] = useState(() => crypto.randomUUID());
   const [error, setError] = useState("");
   const create = useMutation({
@@ -67,7 +55,7 @@ function NewAccountForm({ onDone }: { onDone: () => void }) {
     setError("");
     create.mutate({
       p_op: op,
-      p_owner: String(form.get("owner") || me?.user_id),
+      p_family: family,
       p_name: String(form.get("name")).trim(),
       p_type: String(form.get("type")) as AccountType,
       p_opening_date: String(form.get("opening_date")),
@@ -87,14 +75,6 @@ function NewAccountForm({ onDone }: { onDone: () => void }) {
               {(["checking", "savings", "cash"] as AccountType[]).map((t) => <option key={t} value={t}>{accountTypeLabel[t]}</option>)}
             </select>
           </div>
-          {(creatable.data?.length ?? 0) > 1 && (
-            <div className="field">
-              <label htmlFor="acc-owner">Titular</label>
-              <select id="acc-owner" name="owner">
-                {creatable.data?.map((o) => <option key={o.owner_user_id} value={o.owner_user_id}>{o.display_name}</option>)}
-              </select>
-            </div>
-          )}
         </div>
         <div className="row">
           <Field label="Saldo inicial (R$)" name="opening" inputMode="decimal" defaultValue="0,00"
@@ -113,8 +93,6 @@ function NewAccountForm({ onDone }: { onDone: () => void }) {
 
 export function Accounts() {
   const accounts = useAccounts();
-  const names = useOwnerNames();
-  const { me } = useSession();
   const [creating, setCreating] = useState(false);
 
   return (
@@ -133,10 +111,7 @@ export function Accounts() {
               <li key={a.account_id} className="list-item" aria-label={a.name}>
                 <div className="meta">
                   <Link to={`/contas/${a.account_id}`}><strong>{a.name}</strong></Link>
-                  <span className="muted">
-                    {accountTypeLabel[a.type]}
-                    {a.owner_user_id !== me?.user_id && ` · de ${names.data?.get(a.owner_user_id) ?? "outro titular"}`}
-                  </span>
+                  <span className="muted">{accountTypeLabel[a.type]}</span>
                 </div>
                 <Money cents={a.balance_cents} />
               </li>
@@ -148,13 +123,18 @@ export function Accounts() {
   );
 }
 
+
 export function AccountDetail() {
   const { id } = useParams();
+  const family = useFamilyId();
+  // só a família ativa: uma conta de outra família do mesmo usuário não aparece aqui
   const account = useQuery({
-    queryKey: ["fin", "account", id],
+    queryKey: ["fin", "account", family, id],
+    enabled: !!family,
     queryFn: async () => {
       const { data, error } = await supabase.from("v_account_balances")
-        .select("account_id, owner_user_id, name, type, active, balance_cents").eq("account_id", id!).maybeSingle();
+        .select("account_id, family_id, name, type, active, balance_cents")
+        .eq("account_id", id!).eq("family_id", family).maybeSingle();
       if (error) throw error;
       return data as AccountBalance | null;
     },

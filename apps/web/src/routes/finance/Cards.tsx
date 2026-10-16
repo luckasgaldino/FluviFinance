@@ -1,27 +1,28 @@
-// Marco B — Cartões (FIN-03): cadastro, posições (§5.5), ciclos e regras (§20.9).
+// Cartões e faturas (FF-04): cadastro, posições (§5.5), ciclos e regras (§20.9), da família ativa.
 import { formatDate, parseBRL } from "@fluvi/domain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
 import { Alert, Field, PageTitle, StatusBadge } from "../../components/ui";
 import {
-  cycleBadge, cycleLabel, nums, owners, rpc,
+  cycleBadge, cycleLabel, nums, rpc,
   type Card, type CardCycle, type CardPosition,
 } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
-import { useSession } from "../../lib/session";
+import { useFamilyId } from "../../lib/family";
 import { supabase } from "../../lib/supabase";
-import { Money, useOwnerNames } from "./Accounts";
+import { Money } from "./Accounts";
 
 const positionKeys: (keyof CardPosition)[] = ["credit_limit_cents", "debt_total_cents", "closed_remaining_cents",
   "open_preview_cents", "future_installments_cents", "unapplied_credit_cents", "available_limit_cents"];
 
 export function useCardPositions() {
-  const { session } = useSession();
+  const family = useFamilyId();
   return useQuery({
-    queryKey: ["fin", "card-positions", session?.user.id],
+    queryKey: ["fin", "card-positions", family],
+    enabled: !!family,
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_card_position").select("*").order("name");
+      const { data, error } = await supabase.from("v_card_position").select("*").eq("family_id", family).order("name");
       if (error) throw error;
       return (data as CardPosition[]).map((p) => nums(p, positionKeys));
     },
@@ -55,8 +56,7 @@ function PositionGrid({ p }: { p: CardPosition }) {
 
 function NewCardForm({ onDone }: { onDone: () => void }) {
   const queryClient = useQueryClient();
-  const { me } = useSession();
-  const creatable = useQuery({ queryKey: ["fin", "owners", "cards", "create"], queryFn: () => owners("cards", "create") });
+  const family = useFamilyId();
   const [op] = useState(() => crypto.randomUUID());
   const [error, setError] = useState("");
   const create = useMutation({
@@ -77,7 +77,7 @@ function NewCardForm({ onDone }: { onDone: () => void }) {
     if (four && !/^\d{4}$/.test(four)) return setError("Informe só os 4 últimos dígitos do cartão.");
     setError("");
     create.mutate({
-      p_op: op, p_owner: String(f.get("owner") || me?.user_id), p_name: String(f.get("name")).trim(),
+      p_op: op, p_family: family, p_name: String(f.get("name")).trim(),
       p_closing_day: close, p_due_day: due, p_limit_cents: limit,
       p_policy: String(f.get("policy")), p_brand: String(f.get("brand") || "").trim() || null, p_last_four: four || null,
     });
@@ -106,14 +106,6 @@ function NewCardForm({ onDone }: { onDone: () => void }) {
               <option value="next_cycle">Entra na fatura seguinte</option>
             </select>
           </div>
-          {(creatable.data?.length ?? 0) > 1 && (
-            <div className="field">
-              <label htmlFor="card-owner">Titular</label>
-              <select id="card-owner" name="owner">
-                {creatable.data?.map((o) => <option key={o.owner_user_id} value={o.owner_user_id}>{o.display_name}</option>)}
-              </select>
-            </div>
-          )}
         </div>
         <Alert kind="error">{error}</Alert>
         <div className="row" style={{ alignItems: "center" }}>
@@ -127,8 +119,6 @@ function NewCardForm({ onDone }: { onDone: () => void }) {
 
 export function Cards() {
   const positions = useCardPositions();
-  const names = useOwnerNames();
-  const { me } = useSession();
   const [creating, setCreating] = useState(false);
   return (
     <>
@@ -149,7 +139,6 @@ export function Cards() {
                 <Link to={`/cartoes/${p.card_id}`}><strong>{p.name}</strong></Link>
                 <span className="muted">
                   Dívida <Money cents={p.debt_total_cents} /> · disponível <Money cents={p.available_limit_cents} />
-                  {p.owner_user_id !== me?.user_id && ` · de ${names.data?.get(p.owner_user_id) ?? "outro titular"}`}
                 </span>
               </div>
             </li>
@@ -209,10 +198,13 @@ export function CardDetail() {
   const { id } = useParams();
   const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const family = useFamilyId();
   const card = useQuery({
-    queryKey: ["fin", "card", id],
+    queryKey: ["fin", "card", family, id],
+    enabled: !!family,
     queryFn: async () => {
-      const { data, error } = await supabase.from("credit_cards").select("*").eq("id", id!).maybeSingle();
+      const { data, error } = await supabase.from("credit_cards").select("*")
+        .eq("id", id!).eq("family_id", family).maybeSingle();
       if (error) throw error;
       return data as Card | null;
     },

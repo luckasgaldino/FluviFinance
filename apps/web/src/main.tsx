@@ -5,11 +5,11 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router";
 import { Loading } from "./components/ui";
 import { userHome } from "./lib/device";
+import { FamilyProvider } from "./lib/family";
 import { FinanceLockProvider } from "./lib/finance-lock";
 import { gatePath, SessionProvider, useSession } from "./lib/session";
 import type { Gate } from "./lib/supabase";
 import { Audit } from "./routes/admin/Audit";
-import { Grants } from "./routes/admin/Grants";
 import { Households } from "./routes/admin/Households";
 import { Users } from "./routes/admin/Users";
 import { Blocked, ForgotPassword, Login, MfaEnroll, MfaVerify, Pending, SetPassword } from "./routes/auth";
@@ -85,7 +85,6 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="usuarios" replace /> },
       { path: "usuarios", element: <Users /> },
       { path: "nucleos", element: <Households /> },
-      { path: "permissoes", element: <Grants /> },
       { path: "auditoria", element: <Audit /> },
     ],
   },
@@ -97,7 +96,9 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <FinanceLockProvider>
-          <RouterProvider router={router} />
+          <FamilyProvider>
+            <RouterProvider router={router} />
+          </FamilyProvider>
         </FinanceLockProvider>
       </SessionProvider>
     </QueryClientProvider>

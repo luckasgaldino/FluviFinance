@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createActiveUser, env, signIn, sql, testEmail } from "./support";
+import { createFinanceUser, env, signIn, sql, testEmail } from "./support";
 
 let luck: SupabaseClient;
 let owner: string;
@@ -34,11 +34,11 @@ const lastRun = async (name: string) =>
     "select status, error, items, finished_at from public.job_runs where job = $1 order by started_at desc limit 1", [name]))[0];
 
 beforeAll(async () => {
-  owner = await createActiveUser(testEmail("fin-jobs"));
+  owner = await createFinanceUser(testEmail("fin-jobs"));
   luck = await signIn(testEmail("fin-jobs"));
-  const { data: catRow } = await luck.from("categories").select("id").is("owner_user_id", null).eq("name", "Mercado").single();
+  const { data: catRow } = await luck.from("categories").select("id").is("family_id", null).eq("name", "Mercado").single();
   const { data: card } = await luck.rpc("create_card", {
-    p_op: randomUUID(), p_owner: owner, p_name: "Cartão jobs", p_closing_day: 5, p_due_day: 15,
+    p_op: randomUUID(), p_family: owner, p_name: "Cartão jobs", p_closing_day: 5, p_due_day: 15,
   });
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
   const { error } = await luck.rpc("create_card_purchase", {
@@ -95,18 +95,18 @@ describe("Jobs", () => {
   });
 
   it("O11 via job: gerar recorrências duas vezes não duplica", async () => {
-    const { data: catRow } = await luck.from("categories").select("id").is("owner_user_id", null).eq("name", "Assinaturas").single();
+    const { data: catRow } = await luck.from("categories").select("id").is("family_id", null).eq("name", "Assinaturas").single();
     const { error } = await luck.rpc("create_recurrence_rule", {
-      p_op: randomUUID(), p_owner: owner, p_kind: "bill", p_description: "Streaming", p_category: catRow!.id,
+      p_op: randomUUID(), p_family: owner, p_kind: "bill", p_description: "Streaming", p_category: catRow!.id,
       p_amount_cents: 4_990, p_frequency: "monthly", p_day_of_month: 10, p_start_date: "2026-01-01",
     });
     expect(error).toBeNull();
     await call("generate_recurrences");
     expect((await lastRun("generate_recurrences")).status).toBe("succeeded");
-    const [before] = await sql<{ n: number }>("select count(*)::int as n from public.recurrence_occurrences where owner_user_id = $1", [owner]);
+    const [before] = await sql<{ n: number }>("select count(*)::int as n from public.recurrence_occurrences where family_id = $1", [owner]);
     expect(before.n).toBeGreaterThan(0);
     await call("generate_recurrences");
-    const [after] = await sql<{ n: number }>("select count(*)::int as n from public.recurrence_occurrences where owner_user_id = $1", [owner]);
+    const [after] = await sql<{ n: number }>("select count(*)::int as n from public.recurrence_occurrences where family_id = $1", [owner]);
     expect(after.n).toBe(before.n);
     expect((await lastRun("generate_recurrences")).items).toBe(0);
   });

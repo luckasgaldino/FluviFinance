@@ -113,28 +113,8 @@ test("Convidados ativam a conta pelo link do e-mail e caem no dashboard", async 
 test("Usuário financeiro não acessa o painel administrativo", async ({ page }) => {
   await login(page, luckEmail, PASSWORD);
   await expect(page).toHaveURL(/\/painel$/);
-  await page.goto("/admin/permissoes");
+  await page.goto("/admin/usuarios");
   await expect(page).toHaveURL(/\/painel$/);
-});
-
-test("Admin concede e revoga leitura Bia→Luck", async ({ browser }) => {
-  const page = await adminPage(browser);
-  await page.getByRole("link", { name: "Permissões" }).click();
-  await expect(page.getByRole("heading", { name: "Permissões", level: 1 })).toBeVisible();
-  await page.getByLabel("Núcleo", { exact: true }).selectOption({ label: householdName });
-  await page.getByLabel("Titular dos dados").selectOption({ label: "Bia" });
-  await page.getByLabel("Quem recebe a permissão").selectOption({ label: "Luck" });
-  await page.getByLabel("Escopo").selectOption({ label: "Lançamentos" });
-  await page.getByRole("button", { name: "Conceder" }).click();
-  await expect(page.getByText("Permissão salva.")).toBeVisible();
-  await expect(page.getByRole("listitem", { name: "Bia para Luck" })).toContainText("revisão 1");
-  await expectAccessible(page);
-
-  // revogar pela interface. O efeito no acesso é coberto no pgTAP (01_identity_isolation);
-  // a v2.2 descontinua permissões individuais em favor da família (fase R2).
-  page.once("dialog", (d) => d.accept());
-  await page.getByRole("listitem", { name: "Bia para Luck" }).getByRole("button", { name: "Revogar" }).click();
-  await expect(page.getByText("Nenhuma permissão vigente neste núcleo.")).toBeVisible();
 });
 
 test("Admin bloqueia Luck: sessão aberta cai e novo login é recusado", async ({ browser }) => {

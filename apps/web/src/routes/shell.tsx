@@ -5,10 +5,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import {
   IconCard, IconChart, IconClose, IconHome, IconLayers, IconLock, IconLogout, IconMenu, IconPlus, IconReport,
-  IconSettings, IconShield, IconUnlock, IconUsers, IconList, IconWallet,
+  IconSettings, IconUnlock, IconUsers, IconList, IconWallet,
 } from "../components/icons";
 import { Brand } from "../components/ui";
-import { DEMO_FAMILY } from "../lib/demo";
+import { useFamily } from "../lib/family";
 import { useIsDesktop } from "../lib/device";
 import { useFinanceLock } from "../lib/finance-lock";
 import { useSession } from "../lib/session";
@@ -29,7 +29,6 @@ export const userNav: NavItem[] = [
 const adminNav: NavItem[] = [
   { to: "/admin/usuarios", label: "Usuários", icon: <IconUsers /> },
   { to: "/admin/nucleos", label: "Núcleos e vínculos", icon: <IconHome /> },
-  { to: "/admin/permissoes", label: "Permissões", icon: <IconShield /> },
   { to: "/admin/auditoria", label: "Auditoria", icon: <IconReport /> },
 ];
 
@@ -64,6 +63,7 @@ function PrivacyVeil() {
 function Shell({ nav, family, children }: { nav: NavItem[]; family?: boolean; children: ReactNode }) {
   const { session, signOut } = useSession();
   const { unlocked, lock } = useFinanceLock();
+  const { active } = useFamily();
   const desktop = useIsDesktop();
   const drawer = useRef<HTMLDialogElement>(null);
   const location = useLocation();
@@ -88,7 +88,7 @@ function Shell({ nav, family, children }: { nav: NavItem[]; family?: boolean; ch
   const familyChip = family && (
     <div className="family-chip">
       <span className="label">Família ativa</span>
-      <strong>{DEMO_FAMILY}</strong>
+      <strong>{active?.name ?? "Sem família"}</strong>
     </div>
   );
 

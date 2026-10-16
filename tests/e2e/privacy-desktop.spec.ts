@@ -1,12 +1,12 @@
 // v2.2 §3.1 + decisão da Etapa 0: no desktop o login (senha recém-digitada) já abre a área
 // financeira e o dashboard; após 15 min sem uso a senha é pedida de novo, sem encerrar o login.
 import { expect, test } from "@playwright/test";
-import { createActiveUser, expectAccessible, login, PASSWORD, testEmail, unlockFinance } from "./helpers";
+import { createFinanceUser, expectAccessible, login, PASSWORD, testEmail, unlockFinance } from "./helpers";
 
 const user = testEmail("e2e-priv-desk");
 
 test.beforeAll(async () => {
-  await createActiveUser(user);
+  await createFinanceUser(user);
 });
 
 test("Desktop: login abre o dashboard com sidebar; inatividade pede a senha sem deslogar", async ({ page }) => {

@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createActiveUser, env, signIn, sql, testEmail } from "./support";
+import { createFinanceUser, env, signIn, sql, testEmail } from "./support";
 
 // Sessão SQL agindo como o usuário (mesmo papel e claims que o PostgREST usa), com
 // transação explícita: permite segurar A aberta enquanto B tenta — sobreposição garantida.
@@ -67,20 +67,20 @@ async function reconciliation(card: string) {
 }
 
 beforeAll(async () => {
-  owner = await createActiveUser(testEmail("fin-conc"));
+  owner = await createFinanceUser(testEmail("fin-conc"));
   luck = await signIn(testEmail("fin-conc"));
   account = (await must("create_account", {
-    p_op: randomUUID(), p_owner: owner, p_name: "Banco", p_type: "checking",
+    p_op: randomUUID(), p_family: owner, p_name: "Banco", p_type: "checking",
     p_opening_date: "2026-01-01", p_opening_balance_cents: 10_000_000,
   })).id;
-  const { data } = await luck.from("categories").select("id").is("owner_user_id", null).eq("name", "Mercado").single();
+  const { data } = await luck.from("categories").select("id").is("family_id", null).eq("name", "Mercado").single();
   cat = data!.id;
 });
 
 describe("Concorrência determinística (transações sobrepostas)", () => {
   it("O13: pagamento B espera a trava de A e é recusado por exceder o devido", async () => {
     const obl = (await must("create_obligation", {
-      p_op: randomUUID(), p_owner: owner, p_type: "bill", p_description: "Conta det", p_category: cat,
+      p_op: randomUUID(), p_family: owner, p_type: "bill", p_description: "Conta det", p_category: cat,
       p_amount_cents: 50_000, p_due_date: today(),
     })).id;
     const r = await overlap(owner, "select public.settle_obligation($1, $2, $3, 30000, $4)",
@@ -93,7 +93,7 @@ describe("Concorrência determinística (transações sobrepostas)", () => {
 
   it("O24: estorno B espera a trava de A e é recusado por exceder o estornável; EQ-1 = 0", async () => {
     const card = (await must("create_card", {
-      p_op: randomUUID(), p_owner: owner, p_name: "Cartão det", p_closing_day: 5, p_due_day: 15,
+      p_op: randomUUID(), p_family: owner, p_name: "Cartão det", p_closing_day: 5, p_due_day: 15,
     })).id;
     const purchase = (await must("create_card_purchase", {
       p_op: randomUUID(), p_card: card, p_amount_cents: 30_000, p_installments: 1,
@@ -110,7 +110,7 @@ describe("Concorrência determinística (transações sobrepostas)", () => {
 describe("Concorrência real pela API (estresse)", () => {
   it("O13: 2 pagamentos simultâneos de R$ 300 numa obrigação de R$ 500 → um aceito", async () => {
     const obl = (await must("create_obligation", {
-      p_op: randomUUID(), p_owner: owner, p_type: "bill", p_description: "Conta", p_category: cat,
+      p_op: randomUUID(), p_family: owner, p_type: "bill", p_description: "Conta", p_category: cat,
       p_amount_cents: 50_000, p_due_date: today(),
     })).id;
     const results = await Promise.all([1, 2].map(() => rpc("settle_obligation", {
@@ -124,7 +124,7 @@ describe("Concorrência real pela API (estresse)", () => {
 
   it("O13b: 10 pagamentos simultâneos de R$ 100 numa obrigação de R$ 500 → exatamente 5", async () => {
     const obl = (await must("create_obligation", {
-      p_op: randomUUID(), p_owner: owner, p_type: "bill", p_description: "Conta 2", p_category: cat,
+      p_op: randomUUID(), p_family: owner, p_type: "bill", p_description: "Conta 2", p_category: cat,
       p_amount_cents: 50_000, p_due_date: today(),
     })).id;
     const results = await Promise.all(Array.from({ length: 10 }, () => rpc("settle_obligation", {
@@ -138,7 +138,7 @@ describe("Concorrência real pela API (estresse)", () => {
 
   it("O24: 2 estornos simultâneos de R$ 200 numa compra de R$ 300 → um aceito; EQ-1 = 0", async () => {
     const card = (await must("create_card", {
-      p_op: randomUUID(), p_owner: owner, p_name: "Cartão C", p_closing_day: 5, p_due_day: 15,
+      p_op: randomUUID(), p_family: owner, p_name: "Cartão C", p_closing_day: 5, p_due_day: 15,
     })).id;
     const purchase = (await must("create_card_purchase", {
       p_op: randomUUID(), p_card: card, p_amount_cents: 30_000, p_installments: 1,
@@ -155,7 +155,7 @@ describe("Concorrência real pela API (estresse)", () => {
   it("O16 em paralelo: mesma client_operation_id 10× simultâneas → uma operação", async () => {
     const op = randomUUID();
     const results = await Promise.all(Array.from({ length: 10 }, () => rpc<{ id: string }>("create_transaction", {
-      p_op: op, p_owner: owner, p_type: "expense", p_account: account, p_amount_cents: 777,
+      p_op: op, p_family: owner, p_type: "expense", p_account: account, p_amount_cents: 777,
       p_description: "Paralela", p_category: cat, p_local_date: today(),
     })));
     const ok = results.filter((r) => !r.error);
@@ -163,13 +163,13 @@ describe("Concorrência real pela API (estresse)", () => {
     expect(new Set(ok.map((r) => r.data.id)).size).toBe(1);
     expect(results.filter((r) => r.error).every((r) => r.error!.code === "23505")).toBe(true);
     const rows = await sql<{ n: number }>(
-      "select count(*)::int as n from public.transactions where owner_user_id = $1 and client_operation_id = $2", [owner, op]);
+      "select count(*)::int as n from public.transactions where family_id = $1 and client_operation_id = $2", [owner, op]);
     expect(rows[0].n).toBe(1);
   });
 
   it("O34: ajuste de parcelas concorrente com pagamento da fatura → ambos consistentes; EQ-1 = 0", async () => {
     const card = (await must("create_card", {
-      p_op: randomUUID(), p_owner: owner, p_name: "Cartão O34", p_closing_day: 5, p_due_day: 15,
+      p_op: randomUUID(), p_family: owner, p_name: "Cartão O34", p_closing_day: 5, p_due_day: 15,
     })).id;
     const purchase = (await must("create_card_purchase", {
       p_op: randomUUID(), p_card: card, p_amount_cents: 120_000, p_installments: 6,

@@ -1,6 +1,6 @@
-# Matriz RLS e de privilégios — Marco A
+# Matriz RLS e de privilégios
 
-Referência: Especificação v1.1, §5.2, §19.3, §19.9.
+Referência: Especificação v1.1 (§5.2, §19.3, §19.9) e v2.2 (§2: a família é a única titular; remodelagem R2).
 
 Legenda: **S** = select · **I/U/D** = insert/update/delete diretos · **RPC** = só por função.
 `aal2` = sessão com MFA verificado. "Ativo" = `status = 'active'` com `activation_completed_at` preenchido.
@@ -9,12 +9,12 @@ Legenda: **S** = select · **I/U/D** = insert/update/delete diretos · **RPC** =
 |---|---|---|---|---|---|---|
 | `profiles` | — | S: próprio + membros **ativos** dos seus núcleos; U: só `display_name` do próprio | S: só o próprio; sem U | S: próprio | S: todos | status e provisionamento só por RPC ou gatilho |
 | `administrators` | — | S: própria linha (vazia) | idem | S: própria | S: todas | bootstrap manual |
-| `households` | — | S: núcleos em que é membro ativo | — | — | S: todos | RPC |
-| `household_members` | — | S: membros dos seus núcleos | — | — | S: todos | RPC |
-| `data_grants` | — | S: grants em que é dono ou beneficiário | — | — | S: todos | RPC |
+| `households` (famílias) | — | S: famílias em que é membro ativo | — | — | S: todos | RPC |
+| `household_members` | — | S: membros das suas famílias | — | — | S: todos | RPC |
+| `data_grants` | — | S: grants em que é dono ou beneficiário (histórico; desde a v2.2 não concede acesso) | — | — | S: todos | nenhuma (RPC revogada na R2) |
 | `admin_operations` | — | — | — | — | S | RPC/serviço |
 | `audit_events` | — | S: eventos dos quais é ator | S: idem | S: idem | S: todos | só gatilhos; sem I/U/D para papéis de aplicação |
-| financeiras (Marco B+) | — | via `can_access_owner` | — | — | — | RPC/transação |
+| financeiras (`family_id`) | — | S: via `can_access_family` — membro ativo de família ativa | — | — | — | RPC/transação |
 | `private.rate_limit_*` | — | — | — | — | — | só funções internas (schema não exposto) |
 
 ## RPCs (catálogo da §19.3)
@@ -22,11 +22,11 @@ Legenda: **S** = select · **I/U/D** = insert/update/delete diretos · **RPC** =
 | Função | EXECUTE | Verificação interna |
 |---|---|---|
 | `whoami()` | authenticated | resposta fixa e mínima sobre o próprio usuário |
-| `accessible_owners(scope, op)` | authenticated | `can_access_owner` (exige chamador ativo) |
+| `my_families()` | authenticated | famílias em que o chamador ativo é membro ativo (substitui `accessible_owners`, removida na R2) |
 | `admin_create_household` | authenticated | `assert_admin` (aal2) |
 | `admin_set_user_status` | authenticated | `assert_admin`; não altera a si mesmo; não deixa o sistema sem Admin ativo; `active` só para quem já concluiu a ativação |
-| `admin_set_household_member` | authenticated | `assert_admin`; gatilho impede Admin em núcleo; suspensão revoga grants |
-| `admin_set_data_grant` | authenticated | `assert_admin`; dono e beneficiário membros ativos; `p_expected_revision` |
+| `admin_set_household_member` | authenticated | `assert_admin`; gatilho impede Admin em família; suspensão corta o acesso à família na hora |
+| `admin_set_data_grant` | nenhum (revogado na R2) | permissões individuais descontinuadas pela v2.2 |
 | `service_provision_begin` / `_identity` / `_profile` | service_role | ator Admin ativo verificado; a Edge Function verifica aal2 antes |
 | `private.bootstrap_first_admin` | nenhum (só dono do banco) | trava, alvo único, recusa outro Admin, idempotente |
 | `private.admin_recovery_reset_mfa` / `_replace` | nenhum (só dono do banco) | motivo obrigatório, trava, encerra sessões, auditoria ([procedimento](operacao/recuperacao-admin.md)) |
