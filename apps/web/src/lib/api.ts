@@ -74,7 +74,7 @@ export type Category = { id: string; name: string; kind: "expense" | "income"; f
 
 export type TxnType =
   | "income" | "expense" | "card_purchase" | "card_bill_payment" | "bill_payment"
-  | "transfer_out" | "transfer_in" | "refund" | "reversal" | "installment_adjustment";
+  | "transfer_out" | "transfer_in" | "refund" | "reversal" | "installment_adjustment" | "card_opening_balance";
 
 export const txnTypeLabel: Record<TxnType, string> = {
   income: "Receita",
@@ -87,6 +87,7 @@ export const txnTypeLabel: Record<TxnType, string> = {
   refund: "Estorno",
   reversal: "Reversão",
   installment_adjustment: "Ajuste de parcelas",
+  card_opening_balance: "Saldo anterior do cartão",
 };
 
 export const txnStatusLabel: Record<string, string> = { active: "Ativo", voided: "Anulado", reversed: "Revertido" };

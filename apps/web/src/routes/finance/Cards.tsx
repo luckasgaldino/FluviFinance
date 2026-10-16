@@ -248,10 +248,83 @@ function PayBillForm({ cycle, onDone }: { cycle: CardCycle; onDone: (msg?: strin
   );
 }
 
+// Saldo anterior (implantação na data de corte): dívida que o cartão já tinha antes de a família
+// começar a usar o FluviFinance. Entra nas faturas e na dívida; não é gasto do mês nem sai do caixa.
+type OpeningKind = "fechada" | "aberta" | "parcelas";
+const openingKinds: { value: OpeningKind; label: string; hint: string }[] = [
+  { value: "fechada", label: "Fatura fechada a pagar", hint: "Fatura que já fechou no banco e ainda não foi paga." },
+  { value: "aberta", label: "Fatura aberta até hoje", hint: "O que já foi gasto na fatura atual antes de você começar a lançar aqui." },
+  { value: "parcelas", label: "Parcelas de compra antiga", hint: "Parcelas que ainda vão cair de compras feitas antes do início." },
+];
+
+function OpeningBalanceForm({ card, onDone }: { card: Card; onDone: (msg?: string) => void }) {
+  const queryClient = useQueryClient();
+  const [kind, setKind] = useState<OpeningKind>("fechada");
+  const [op, setOp] = useState(() => crypto.randomUUID());
+  const [error, setError] = useState("");
+  const thisMonth = businessToday().slice(0, 7);
+  const save = useMutation({
+    mutationFn: (args: Record<string, unknown>) => rpc("create_card_opening_balance", args),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["fin"] });
+      setOp(crypto.randomUUID());
+      onDone("Saldo anterior registrado. Ele entra nas faturas e na dívida, sem virar gasto do mês.");
+    },
+    onError: (e) => setError(errorMessage(e)),
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const cents = parseBRL(String(f.get("amount")));
+    const n = kind === "parcelas" ? Number(f.get("n")) : 1;
+    const due = String(f.get("due"));
+    if (cents === null || cents <= 0) return setError("Informe um valor maior que zero, no formato 1.234,56.");
+    if (!(n >= 1 && n <= 36)) return setError("Parcelas de 1 a 36.");
+    if (!/^\d{4}-\d{2}$/.test(due)) return setError("Informe o mês de vencimento.");
+    setError("");
+    const fallback = kind === "fechada" ? `Fatura anterior (vence ${due.slice(5)}/${due.slice(0, 4)})`
+      : kind === "aberta" ? "Fatura aberta antes do início" : "Parcelas de compra anterior";
+    save.mutate({ p_op: op, p_card: card.id, p_description: String(f.get("description") || "").trim() || fallback,
+      p_installment_cents: cents, p_installments: n, p_first_due_month: `${due}-01` });
+  }
+
+  const current = openingKinds.find((k) => k.value === kind)!;
+  return (
+    <form className="card stack" onSubmit={onSubmit} noValidate aria-label="Saldo anterior do cartão">
+      <h2>Saldo anterior do cartão</h2>
+      <p className="muted">Use ao começar: registra a dívida que o cartão já tinha. Não conta como gasto do mês nem sai do saldo das contas.</p>
+      <fieldset className="segmented grid-2" style={{ margin: 0 }}>
+        <legend className="visually-hidden">O que registrar</legend>
+        {openingKinds.map((k) => (
+          <label key={k.value}>
+            <input type="radio" name="opening-kind" checked={kind === k.value} onChange={() => { setKind(k.value); setError(""); }} />
+            <span>{k.label}</span>
+          </label>
+        ))}
+      </fieldset>
+      <p className="muted">{current.hint}</p>
+      <Field label="Descrição (opcional)" name="description" maxLength={140} />
+      <div className="row">
+        <Field label={kind === "parcelas" ? "Valor de cada parcela (R$)" : "Valor (R$)"} name="amount" inputMode="decimal" autoComplete="off" placeholder="0,00" />
+        {kind === "parcelas" && <Field label="Parcelas restantes" name="n" type="number" min={1} max={36} defaultValue={1} />}
+        <Field label={kind === "parcelas" ? "Vencimento da próxima parcela" : "Vencimento da fatura"} name="due" type="month"
+          defaultValue={thisMonth} hint={`Este cartão vence no dia ${card.due_day}.`} />
+      </div>
+      <Alert kind="error">{error}</Alert>
+      <div className="row" style={{ alignItems: "center" }}>
+        <button className="btn" type="submit" disabled={save.isPending}>Registrar</button>
+        <button className="btn secondary" type="button" onClick={() => onDone()}>Cancelar</button>
+      </div>
+    </form>
+  );
+}
+
 export function CardDetail() {
   const { id } = useParams();
   const [editing, setEditing] = useState(false);
   const [paying, setPaying] = useState<CardCycle | null>(null);
+  const [opening, setOpening] = useState(false);
   const [feedback, setFeedback] = useState("");
   const family = useFamilyId();
   const card = useQuery({
@@ -317,8 +390,10 @@ export function CardDetail() {
       <div className="row" style={{ alignItems: "center" }}>
         <Link className="btn" to={`/cartoes/compra?cartao=${c.id}`}>Nova compra</Link>
         {!editing && <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setEditing(true); }}>Editar regras</button>}
+        {!opening && <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setOpening(true); }}>Saldo anterior</button>}
       </div>
       {editing && <RulesForm card={c} onDone={(msg) => { setEditing(false); setFeedback(msg); }} />}
+      {opening && <OpeningBalanceForm card={c} onDone={(msg) => { setOpening(false); if (msg) setFeedback(msg); }} />}
 
       <section className="card stack" aria-labelledby="faturas">
         <h2 id="faturas">Faturas</h2>

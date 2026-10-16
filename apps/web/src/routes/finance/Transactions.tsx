@@ -156,7 +156,7 @@ const kindMatch: Record<KindFilter, (t: Txn) => boolean> = {
   todos: () => true,
   receitas: (t) => t.type === "income",
   despesas: (t) => t.type === "expense" || t.type === "bill_payment",
-  cartao: (t) => t.type === "card_purchase" || t.type === "card_bill_payment",
+  cartao: (t) => t.type === "card_purchase" || t.type === "card_bill_payment" || t.type === "card_opening_balance",
   transferencias: (t) => t.type === "transfer_in" || t.type === "transfer_out",
 };
 
