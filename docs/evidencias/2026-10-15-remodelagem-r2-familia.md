@@ -45,6 +45,7 @@
 | E2E | 37 | **36/36** (saiu o fluxo da tela de Permissões) |
 | Unitários | 33 | **33/33** |
 | Build web | ok | ok |
+| Exercício de backup e restauração (`pnpm backup:drill`) | PASS | **PASS**: isolamento por família no banco restaurado e 319 pgTAP sobre a restauração |
 
 **Mudanças nas suítes:**
 
@@ -59,6 +60,7 @@
 - **05:** O14, O15 e O19b viraram cenários de família: transferência na mesma família, FIN-05 e mesmo erro para família alheia.
 - **04, 06, 07, 08:** família com o mesmo UUID do usuário; troca de nomes.
 - **09 (novo):** aceites FIN-01..05 pela API real, limite de 36 parcelas e FAM-01/02.
+- **Exercício de restauração:** a fixture virou família (sem `data_grants`); as checagens usam `my_families` e `can_access_family`. O CI da primeira versão da branch falhou só nesse passo, que ainda usava `accessible_owners`.
 - **Integração:** `createFinanceUser`/`createFamily`. O caso de permissão individual virou "não há permissão individual; suspender o vínculo corta a família com o mesmo token", com auditoria.
 
 **Mutação:** com `can_access_family` sem o filtro de família (qualquer membro acessaria qualquer família), 30 asserções falham em 5 suítes (01, 05, 06, 07, 09). Com a regra restaurada, tudo volta a passar.

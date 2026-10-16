@@ -56,15 +56,10 @@ function seedFixtures() {
      where email like 'drill-%.${tag}@fluvi.test';
     insert into public.administrators (user_id)
       select id from auth.users where email = 'drill-admin.${tag}@fluvi.test';
-    insert into public.households (name) values ('Núcleo Drill ${tag}');
+    insert into public.households (name) values ('Família Drill ${tag}');
     insert into public.household_members (household_id, user_id)
       select h.id, u.id from public.households h, auth.users u
-       where h.name = 'Núcleo Drill ${tag}' and u.email in ('drill-luck.${tag}@fluvi.test', 'drill-bia.${tag}@fluvi.test');
-    insert into public.data_grants (household_id, owner_user_id, grantee_user_id, resource_scope, can_read)
-      select h.id, b.id, l.id, 'transactions', true
-        from public.households h, auth.users b, auth.users l
-       where h.name = 'Núcleo Drill ${tag}'
-         and b.email = 'drill-bia.${tag}@fluvi.test' and l.email = 'drill-luck.${tag}@fluvi.test';
+       where h.name = 'Família Drill ${tag}' and u.email in ('drill-luck.${tag}@fluvi.test', 'drill-bia.${tag}@fluvi.test');
     commit;
     select split_part(u.email, '.', 1), u.id, p.status from auth.users u join public.profiles p on p.user_id = u.id
      where u.email like 'drill-%.${tag}@fluvi.test';
@@ -78,7 +73,7 @@ function seedFixtures() {
 function cleanupFixtures() {
   psql(source, `
     delete from auth.users where email like 'drill-%.${tag}@fluvi.test';
-    delete from public.households where name = 'Núcleo Drill ${tag}';
+    delete from public.households where name = 'Família Drill ${tag}';
   `);
 }
 
@@ -108,19 +103,22 @@ function restore(plain, extensions = []) {
   run("docker", ["exec", RESTORE_CONTAINER, "rm", "-f", "/tmp/restore.dump"]);
 }
 
-// Acesso no banco restaurado, com JWT simulado: isolamento precisa sobreviver ao restore.
+// Acesso no banco restaurado, com JWT simulado: o isolamento por família (v2.2) precisa
+// sobreviver ao restore — membros acessam a família, o Admin não acessa finanças.
 function accessChecks() {
   const as = (sub, aal, sql) => `
     select set_config('request.jwt.claims', '{"sub":"${sub}","role":"authenticated","aal":"${aal}"}', true);
     set local role authenticated;
     ${sql}
     reset role;`;
+  const family = `(select id from public.households where name = 'Família Drill ${tag}')`;
   const rows = psql(restored, `
     begin;
-    ${as(ids.luck, "aal1", `select 'luck_tx_read', count(*) from public.accessible_owners('transactions', 'read');
-                            select 'luck_goals_read', count(*) from public.accessible_owners('goals', 'read');`)}
-    ${as(ids.bia, "aal1", `select 'bia_tx_read', count(*) from public.accessible_owners('transactions', 'read');`)}
-    ${as(ids.admin, "aal2", `select 'admin_financial', count(*) from public.accessible_owners('all', 'read');
+    ${as(ids.luck, "aal1", `select 'luck_families', count(*) from public.my_families();
+                            select 'luck_access', private.can_access_family(${family}, 'transactions', 'read')::text;`)}
+    ${as(ids.bia, "aal1", `select 'bia_families', count(*) from public.my_families();`)}
+    ${as(ids.admin, "aal2", `select 'admin_financial', count(*) from public.my_families();
+                             select 'admin_access', private.can_access_family(${family}, 'transactions', 'read')::text;
                              select 'admin_can_administer', (public.whoami() ->> 'can_administer');`)}
     ${as(ids.admin, "aal1", `select 'admin_aal1_households', count(*) from public.households;`)}
     rollback;
@@ -128,8 +126,8 @@ function accessChecks() {
 
   const got = Object.fromEntries(rows);
   const expected = {
-    luck_tx_read: "2", luck_goals_read: "1", bia_tx_read: "1",
-    admin_financial: "0", admin_can_administer: "true", admin_aal1_households: "0",
+    luck_families: "1", luck_access: "true", bia_families: "1",
+    admin_financial: "0", admin_access: "false", admin_can_administer: "true", admin_aal1_households: "0",
   };
   const failures = Object.entries(expected).filter(([k, v]) => got[k] !== v)
     .map(([k, v]) => `${k}: esperado ${v}, obtido ${got[k]}`);
