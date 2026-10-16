@@ -35,3 +35,7 @@
 - Instalar no iPhone (Safari → Compartilhar → Adicionar à Tela de Início).
 - Validar: tela discreta, senha, 15 min, véu ao trocar de app, VoiceOver e texto ampliado.
 - SMTP próprio continua pendente (decisão adiada).
+
+## Publicação no fluvi-dev (16/10/2026, ~00:30 BRT)
+
+Só frontend, sem migration. CI da branch verde (`67d55d1`, 38845415877). Merge na `main`: `deploy-dev` e CI verdes. No ambiente publicado, `manifest.webmanifest` (application/manifest+json), `sw.js` (`Cache-Control: no-cache`), `icon-192.png` e `apple-touch-icon.png` respondem 200.
