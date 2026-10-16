@@ -70,3 +70,19 @@
 - **Teste de inatividade:** o teste avançava o relógio antes da resposta do `touch_finance`. Agora espera a resposta.
 - **`goto` logo após o login no desktop:** a prova de senha é perdida no reload. O helper agora espera o painel liberado.
 - **Falha isolada no desbloqueio:** não se repetiu. Descartei limite de login (o Auth local não limita nem logins corretos; 35 seguidos devolveram 200) e corrigi as duas corridas reais que podiam causá-la.
+
+## Deploy no fluvi-dev (15/10/2026, ~23:15–23:30 BRT)
+
+Sob a autorização do responsável para executar as ações pertinentes. O ambiente tem só dados fictícios.
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`0768f07`, execução 38839696075) |
+| Backup pré-deploy + restauração isolada | `2026-10-16T02-17-53-214Z.dump.enc`; **PASS**: fotografia idêntica (67 itens), 319 pgTAP (suíte da `main`, pré-R3) |
+| `db push` | só `20261017000200_financial_unlock.sql`; aplicada sem erro |
+| `supabase test db --linked` | **358/358 PASS** |
+| Testes remotos (API hospedada, JWT real) | **11/11 PASS**, incluindo **PRIV-09 no hospedado**: logado sem desbloqueio, `financial_accounts` e `v_account_balances` vazios; após `unlock_finance` com a senha recém-digitada, a conta aparece |
+| Merge na `main` → deploy | `deploy-dev` e CI verdes (`6567f33`); `/painel` 200 |
+| Backup pós-deploy + restauração isolada | `2026-10-16T02-25-00-058Z.dump.enc`; **PASS**: 68 itens, 358 pgTAP no restaurado |
+
+**Para validar no celular:** a tela de senha agora consulta o servidor. Fechar e reabrir o app dentro de 15 min mantém a área liberada; depois disso, ela pede a senha de novo. Trocar de família (quando houver mais de uma) também pede a senha.
