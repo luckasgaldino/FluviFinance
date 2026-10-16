@@ -105,6 +105,7 @@ export type Txn = {
   competence_month: string;
   note: string | null;
   cancel_reason: string | null;
+  replaces_transaction_id?: string | null;
 };
 
 export type LedgerEntry = {
