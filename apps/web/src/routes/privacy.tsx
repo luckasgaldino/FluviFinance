@@ -12,7 +12,6 @@ import { errorMessage } from "../lib/errors";
 import { useFamily } from "../lib/family";
 import { useFinanceLock } from "../lib/finance-lock";
 import { useSession } from "../lib/session";
-import { supabase } from "../lib/supabase";
 
 // ---------------------------------------------------------------------------
 // Tela inicial discreta: nenhum dado financeiro, só a ação principal.
@@ -60,7 +59,7 @@ export function NoFamily() {
 }
 
 function UnlockScreen() {
-  const { unlock } = useFinanceLock();
+  const { unlock, ready } = useFinanceLock();
   const { session } = useSession();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -76,6 +75,7 @@ function UnlockScreen() {
     setBusy(false);
     form.reset();
     if (result === "wrong") setError("Senha incorreta. Nenhuma informação foi liberada.");
+    else if (result === "limited") setError("Muitas tentativas em pouco tempo. Aguarde um pouco e tente novamente.");
     else if (result === "error") setError("Não foi possível confirmar agora. Tente novamente em instantes.");
   }
 
@@ -91,7 +91,7 @@ function UnlockScreen() {
         <input type="email" name="username" autoComplete="username" value={session?.user.email ?? ""} readOnly hidden />
         <Field label="Senha" name="password" type="password" autoComplete="current-password" required />
         <Alert kind="error">{error}</Alert>
-        <button className="btn block" type="submit" disabled={busy}>{busy ? "Confirmando…" : "Desbloquear"}</button>
+        <button className="btn block" type="submit" disabled={busy || !ready}>{busy ? "Confirmando…" : "Desbloquear"}</button>
         <Link to="/inicio" style={{ textAlign: "center" }}>Voltar ao início</Link>
       </form>
     </section>
@@ -119,17 +119,8 @@ function useQuickOptions(family: string) {
     queryKey: ["quick", "options", family],
     enabled: !!family,
     staleTime: 60_000,
-    queryFn: async (): Promise<QuickOptions> => {
-      const [acc, cards, cats] = await Promise.all([
-        supabase.from("financial_accounts").select("id, name").eq("family_id", family).eq("active", true)
-          .neq("type", "credit_card").order("name"),
-        supabase.from("credit_cards").select("id, name").eq("family_id", family).eq("active", true).order("name"),
-        supabase.from("categories").select("id, name, kind").eq("active", true)
-          .or(`family_id.is.null,family_id.eq.${family}`).order("name"),
-      ]);
-      for (const r of [acc, cards, cats]) if (r.error) throw r.error;
-      return { accounts: acc.data as Option[], cards: cards.data as Option[], categories: cats.data as QuickOptions["categories"] };
-    },
+    // só apelidos, sem saldo, limite ou final do cartão; funciona com a área financeira bloqueada
+    queryFn: () => rpc<QuickOptions>("quick_entry_options", { p_family: family }),
   });
 }
 

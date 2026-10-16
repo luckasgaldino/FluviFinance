@@ -41,6 +41,10 @@ export async function expectNoHorizontalOverflow(page: Page) {
 export async function loginUser(page: Page, email: string, password: string) {
   await login(page, email, password);
   await expect(page).toHaveURL(/\/(painel|inicio)$/);
+  // desktop: o próprio login desbloqueia no servidor (assíncrono); só segue com o painel liberado
+  if (page.url().endsWith("/painel")) {
+    await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
+  }
 }
 
 // Confirma a senha na tela "Área financeira protegida" (segunda barreira do celular).

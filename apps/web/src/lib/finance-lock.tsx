@@ -1,22 +1,25 @@
-// Desbloqueio financeiro (v2.2 §3.2): segunda confirmação com a MESMA senha do login para
-// ler dados financeiros; vale para todas as telas até 15 min sem atividade humana, bloqueio
-// manual, saída ou troca de usuário. A expiração não encerra o login.
+// Desbloqueio financeiro (v2.2 §3.2): segunda confirmação com a MESMA senha do login para ler
+// dados financeiros; vale para todas as telas até 15 min sem atividade humana, bloqueio manual,
+// saída, troca de senha, revogação ou troca de família. A expiração não encerra o login.
 //
-// Fase R1: a senha é conferida pelo provedor de identidade (signInWithPassword), mas o estado
-// do desbloqueio ainda vive no cliente. Na fase R3 o desbloqueio passa a ser registrado e
-// exigido pelo banco (RLS/RPC por sessão e família); este módulo vira só o espelho desse estado.
+// O banco é a fonte de verdade (R3): o desbloqueio fica registrado por sessão e família e é
+// exigido pela RLS e pelas RPCs. Este módulo só espelha o estado para decidir o que mostrar:
+// - desbloquear = login de novo com a senha (prova recente no JWT) + unlock_finance(família);
+// - atividade humana chama touch_finance (no máximo a cada 30 s); leituras e polling não renovam;
+// - ao voltar ao app, o estado é relido no servidor antes de mostrar dados.
+// Nada é guardado no navegador: nem senha, nem estado do desbloqueio.
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isDesktop } from "./device";
+import { useFamily } from "./family";
 import { useSession } from "./session";
 import { supabase } from "./supabase";
 
 export const IDLE_LIMIT_MS = 15 * 60_000;
-const STORAGE_KEY = "fluvi.unlock";
+const TOUCH_EVERY_MS = 30_000;
 const LOGIN_PROOF_MS = 60_000;
 
 // Senha digitada no login agora há pouco: no desktop, o próprio login abre a área financeira.
-// Vale também quando a sessão já existia (definir senha pelo link de convite ou recuperação).
 let loginProofAt = 0;
 const PROOF_EVENT = "fluvi:password-proof";
 export const noteLoginPassword = () => {
@@ -24,30 +27,15 @@ export const noteLoginPassword = () => {
   window.dispatchEvent(new Event(PROOF_EVENT));
 };
 
-type Stored = { uid: string; last: number };
-
-function readStored(): Stored | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Stored) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStored(value: Stored | null) {
-  try {
-    if (value) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-    else sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // armazenamento indisponível: o desbloqueio só não sobrevive a recarregar a página
-  }
-}
+type ServerState = { unlocked: boolean; family?: string; expiresAt: number };
+const LOCKED: ServerState = { unlocked: false, expiresAt: 0 };
 
 type FinanceLockValue = {
   unlocked: boolean;
-  /** confere a senha com o provedor de identidade; nunca guarda a senha */
-  unlock: (password: string) => Promise<"ok" | "wrong" | "error">;
+  /** confere a senha com o provedor de identidade e desbloqueia a família ativa no servidor */
+  unlock: (password: string) => Promise<"ok" | "wrong" | "limited" | "error">;
+  /** família ativa carregada: só então dá para desbloquear */
+  ready: boolean;
   lock: () => void;
   /** atividade humana em área protegida (toque, tecla, rolagem) */
   touch: () => void;
@@ -55,93 +43,123 @@ type FinanceLockValue = {
 
 const FinanceLockContext = createContext<FinanceLockValue | null>(null);
 
+type StatusResponse = { unlocked: boolean; family_id?: string; expires_in_seconds?: number };
+const fromStatus = (s: StatusResponse | null): ServerState =>
+  s?.unlocked ? { unlocked: true, family: s.family_id, expiresAt: Date.now() + (s.expires_in_seconds ?? 0) * 1000 } : LOCKED;
+
 export function FinanceLockProvider({ children }: { children: ReactNode }) {
   const { session } = useSession();
+  const { active } = useFamily();
   const queryClient = useQueryClient();
   const uid = session?.user.id ?? null;
-  const ready = session !== undefined;
-  const [unlocked, setUnlocked] = useState(false);
-  const lastActivity = useRef(0);
-  const lastWrite = useRef(0);
+  const family = active?.family_id ?? null;
+  const [state, setState] = useState<ServerState>(LOCKED);
+  const [now, setNow] = useState(() => Date.now());
+  const lastTouch = useRef(0);
+  const previousFamily = useRef<string | null>(null);
+  // cada mudança de estado local incrementa a época: respostas de consultas antigas são ignoradas
+  const epoch = useRef(0);
 
-  const lock = useCallback(() => {
-    setUnlocked(false);
-    lastActivity.current = 0;
-    writeStored(null);
+  const forget = useCallback(() => {
+    epoch.current += 1;
+    setState(LOCKED);
     // nada lido na área protegida sobrevive ao bloqueio
     queryClient.removeQueries({ queryKey: ["fin"] });
   }, [queryClient]);
 
-  const open = useCallback((user: string) => {
-    lastActivity.current = Date.now();
-    lastWrite.current = lastActivity.current;
-    writeStored({ uid: user, last: lastActivity.current });
-    setUnlocked(true);
+  const refresh = useCallback(async () => {
+    const started = epoch.current;
+    const { data, error } = await supabase.rpc("finance_status");
+    if (started !== epoch.current) return;  // um desbloqueio ou bloqueio aconteceu nesse meio-tempo
+    if (error) return forget();
+    const next = fromStatus(data as StatusResponse);
+    if (!next.unlocked) forget();
+    else setState(next);
+  }, [forget]);
+
+  const serverUnlock = useCallback(async (target: string) => {
+    const { data, error } = await supabase.rpc("unlock_finance", { p_family: target });
+    if (error) return false;
+    const idle = (data as { idle_seconds: number }).idle_seconds;
+    epoch.current += 1;
+    lastTouch.current = Date.now();
+    setState({ unlocked: true, family: target, expiresAt: Date.now() + idle * 1000 });
+    return true;
   }, []);
 
-  // Usuário mudou ou saiu: bloqueia. Mesmo usuário: retoma o desbloqueio só se ainda válido.
-  useEffect(() => {
-    if (!ready) return;
-    if (!uid) return lock();
-    const stored = readStored();
-    if (stored?.uid === uid && Date.now() - stored.last < IDLE_LIMIT_MS) {
-      lastActivity.current = stored.last;
-      setUnlocked(true);
-    } else if (isDesktop() && Date.now() - loginProofAt < LOGIN_PROOF_MS) {
-      loginProofAt = 0;
-      open(uid);
-    } else {
-      lock();
-    }
-  }, [uid, ready, lock, open]);  // renovação do token não reavalia o desbloqueio
+  const lock = useCallback(() => {
+    forget();
+    void supabase.rpc("lock_finance");
+  }, [forget]);
 
+  // Usuário mudou ou saiu: começa bloqueado e consulta o servidor (recarregar a página mantém).
   useEffect(() => {
-    const onProof = () => {
-      if (uid && isDesktop()) {
+    forget();
+    if (uid) void refresh();
+  }, [uid, refresh, forget]);
+
+  // Troca de família: o desbloqueio anterior é encerrado no servidor (voltar exige senha).
+  useEffect(() => {
+    if (previousFamily.current && family && previousFamily.current !== family) lock();
+    previousFamily.current = family;
+  }, [family, lock]);
+
+  // Desktop: a senha do login (ou recém-definida) abre a área financeira da família ativa.
+  useEffect(() => {
+    const tryProof = () => {
+      if (uid && family && isDesktop() && Date.now() - loginProofAt < LOGIN_PROOF_MS) {
         loginProofAt = 0;
-        open(uid);
+        void serverUnlock(family);
       }
     };
-    window.addEventListener(PROOF_EVENT, onProof);
-    return () => window.removeEventListener(PROOF_EVENT, onProof);
-  }, [uid, open]);
+    tryProof();
+    window.addEventListener(PROOF_EVENT, tryProof);
+    return () => window.removeEventListener(PROOF_EVENT, tryProof);
+  }, [uid, family, serverUnlock]);
 
-  // Expiração por inatividade. Verificar não renova: só atividade humana renova (touch).
+  // Expiração vista pelo cliente (o banco já recusa sozinho) e releitura ao voltar ao app.
   useEffect(() => {
-    if (!unlocked) return;
-    const check = () => {
-      if (Date.now() - lastActivity.current >= IDLE_LIMIT_MS) lock();
+    if (!state.unlocked) return;
+    const tick = () => {
+      setNow(Date.now());
+      if (Date.now() >= state.expiresAt) forget();
     };
-    const id = window.setInterval(check, 5_000);
-    document.addEventListener("visibilitychange", check);
+    const onVisible = () => {
+      tick();
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const id = window.setInterval(tick, 5_000);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(id);
-      document.removeEventListener("visibilitychange", check);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [unlocked, lock]);
+  }, [state, forget, refresh]);
 
   const touch = useCallback(() => {
-    if (!unlocked || !uid) return;
-    const now = Date.now();
-    if (now - lastActivity.current >= IDLE_LIMIT_MS) return lock();
-    lastActivity.current = now;
-    if (now - lastWrite.current > 10_000) {
-      lastWrite.current = now;
-      writeStored({ uid, last: now });
-    }
-  }, [unlocked, uid, lock]);
+    if (!state.unlocked) return;
+    const t = Date.now();
+    if (t >= state.expiresAt) return forget();
+    if (t - lastTouch.current < TOUCH_EVERY_MS) return;
+    lastTouch.current = t;
+    void supabase.rpc("touch_finance").then(({ data, error }) => {
+      if (error || data !== true) forget();
+      else setState((s) => (s.unlocked ? { ...s, expiresAt: t + IDLE_LIMIT_MS } : s));
+    });
+  }, [state, forget]);
 
   const unlock = useCallback(async (password: string) => {
     const email = session?.user.email;
-    if (!email || !uid) return "error";
+    if (!email || !uid || !family) return "error";
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return error.status === 400 ? "wrong" : "error";
+    if (error) return error.status === 400 ? "wrong" : error.status === 429 ? "limited" : "error";
     if (data.user?.id !== uid) return "error";
-    open(uid);
-    return "ok";
-  }, [session, uid, open]);
+    return (await serverUnlock(family)) ? "ok" : "error";
+  }, [session, uid, family, serverUnlock]);
 
-  const value = useMemo(() => ({ unlocked, unlock, lock, touch }), [unlocked, unlock, lock, touch]);
+  const unlocked = state.unlocked && state.family === family && now < state.expiresAt;
+  const ready = !!uid && !!family;
+  const value = useMemo(() => ({ unlocked, unlock, lock, touch, ready }), [unlocked, unlock, lock, touch, ready]);
   return <FinanceLockContext.Provider value={value}>{children}</FinanceLockContext.Provider>;
 }
 

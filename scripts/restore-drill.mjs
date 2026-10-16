@@ -104,7 +104,8 @@ function restore(plain, extensions = []) {
 }
 
 // Acesso no banco restaurado, com JWT simulado: o isolamento por família (v2.2) precisa
-// sobreviver ao restore — membros acessam a família, o Admin não acessa finanças.
+// sobreviver ao restore — membros acessam a família, o Admin não acessa finanças, e ler exige
+// o desbloqueio financeiro da sessão (R3).
 function accessChecks() {
   const as = (sub, aal, sql) => `
     select set_config('request.jwt.claims', '{"sub":"${sub}","role":"authenticated","aal":"${aal}"}', true);
@@ -115,7 +116,8 @@ function accessChecks() {
   const rows = psql(restored, `
     begin;
     ${as(ids.luck, "aal1", `select 'luck_families', count(*) from public.my_families();
-                            select 'luck_access', private.can_access_family(${family}, 'transactions', 'read')::text;`)}
+                            select 'luck_access', private.can_access_family(${family}, 'transactions', 'create')::text;
+                            select 'luck_read_locked', private.can_access_family(${family}, 'transactions', 'read')::text;`)}
     ${as(ids.bia, "aal1", `select 'bia_families', count(*) from public.my_families();`)}
     ${as(ids.admin, "aal2", `select 'admin_financial', count(*) from public.my_families();
                              select 'admin_access', private.can_access_family(${family}, 'transactions', 'read')::text;
@@ -126,7 +128,7 @@ function accessChecks() {
 
   const got = Object.fromEntries(rows);
   const expected = {
-    luck_families: "1", luck_access: "true", bia_families: "1",
+    luck_families: "1", luck_access: "true", luck_read_locked: "false", bia_families: "1",
     admin_financial: "0", admin_access: "false", admin_can_administer: "true", admin_aal1_households: "0",
   };
   const failures = Object.entries(expected).filter(([k, v]) => got[k] !== v)

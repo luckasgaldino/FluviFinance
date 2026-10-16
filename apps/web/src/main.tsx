@@ -95,11 +95,11 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
-        <FinanceLockProvider>
-          <FamilyProvider>
+        <FamilyProvider>
+          <FinanceLockProvider>
             <RouterProvider router={router} />
-          </FamilyProvider>
-        </FinanceLockProvider>
+          </FinanceLockProvider>
+        </FamilyProvider>
       </SessionProvider>
     </QueryClientProvider>
   </StrictMode>,

@@ -114,7 +114,9 @@ test("PRIV-05: 15 min sem interação bloqueiam as leituras; o login e o lançam
 
   // atividade humana renova a janela
   await page.clock.fastForward("10:00");
+  const touched = page.waitForResponse((r) => r.url().includes("/rpc/touch_finance"));
   await page.getByRole("heading", { name: "Visão geral", level: 1 }).click();
+  expect(await (await touched).json()).toBe(true);   // o servidor renovou a janela
   await page.clock.fastForward("10:00");
   await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
@@ -127,6 +129,20 @@ test("PRIV-05: 15 min sem interação bloqueiam as leituras; o login e o lançam
   await page.getByRole("link", { name: "Novo lançamento" }).click();
   await expect(page.getByRole("heading", { name: "Novo lançamento", level: 1 })).toBeVisible();
   await expect(page).not.toHaveURL(/\/entrar$/);
+});
+
+test("PRIV-09 (rede): antes do desbloqueio nenhuma leitura financeira sai do navegador", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("/rest/v1/")) requests.push(r.url().replace(/^.*\/rest\/v1\//, "")); });
+  await loginMobile(page);
+  await page.getByRole("link", { name: "Novo lançamento" }).click();
+  await expect(page.getByLabel("Pagar com")).toBeVisible();
+  await menu(page, "Visão geral");
+  await expect(protectedHeading(page)).toBeVisible();
+  const financial = requests.filter((u) =>
+    /^(financial_accounts|transactions|ledger_entries|credit_cards|billing_cycles|card_purchases|installments|obligations|payments|refunds|transfers|v_)/.test(u));
+  expect(financial).toEqual([]);
+  expect(requests.some((u) => u.startsWith("rpc/quick_entry_options"))).toBe(true);
 });
 
 test("PRIV-07: sair e entrar de novo exige novo desbloqueio", async ({ page }) => {

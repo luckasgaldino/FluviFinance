@@ -14,7 +14,8 @@ Legenda: **S** = select · **I/U/D** = insert/update/delete diretos · **RPC** =
 | `data_grants` | — | S: grants em que é dono ou beneficiário (histórico; desde a v2.2 não concede acesso) | — | — | S: todos | nenhuma (RPC revogada na R2) |
 | `admin_operations` | — | — | — | — | S | RPC/serviço |
 | `audit_events` | — | S: eventos dos quais é ator | S: idem | S: idem | S: todos | só gatilhos; sem I/U/D para papéis de aplicação |
-| financeiras (`family_id`) | — | S: via `can_access_family` — membro ativo de família ativa | — | — | — | RPC/transação |
+| financeiras (`family_id`) | — | S: via `can_access_family` — membro ativo de família ativa **e** desbloqueio financeiro vigente da sessão para a família (R3) | — | — | — | RPC/transação; criar não exige desbloqueio |
+| `private.financial_unlocks` | — | — (schema privado) | — | — | — | só `unlock_finance`/`touch_finance`/`lock_finance` e gatilhos de invalidação |
 | `private.rate_limit_*` | — | — | — | — | — | só funções internas (schema não exposto) |
 
 ## RPCs (catálogo da §19.3)
@@ -22,6 +23,9 @@ Legenda: **S** = select · **I/U/D** = insert/update/delete diretos · **RPC** =
 | Função | EXECUTE | Verificação interna |
 |---|---|---|
 | `whoami()` | authenticated | resposta fixa e mínima sobre o próprio usuário |
+| `unlock_finance(família)` | authenticated | membro ativo; sessão válida; `amr` de senha com menos de 2 min; um desbloqueio por sessão |
+| `touch_finance()` / `lock_finance()` / `finance_status()` | authenticated | só a própria sessão; status não renova |
+| `quick_entry_options(família)` | authenticated | membro ativo; só id e apelido (sem valores) |
 | `my_families()` | authenticated | famílias em que o chamador ativo é membro ativo (substitui `accessible_owners`, removida na R2) |
 | `admin_create_household` | authenticated | `assert_admin` (aal2) |
 | `admin_set_user_status` | authenticated | `assert_admin`; não altera a si mesmo; não deixa o sistema sem Admin ativo; `active` só para quem já concluiu a ativação |

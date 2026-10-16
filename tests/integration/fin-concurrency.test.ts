@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
-import { createFinanceUser, env, signIn, sql, testEmail } from "./support";
+import { claimsOf, createFinanceUser, env, signInUnlocked, sql, testEmail } from "./support";
 
 // Sessão SQL agindo como o usuário (mesmo papel e claims que o PostgREST usa), com
 // transação explícita: permite segurar A aberta enquanto B tenta — sobreposição garantida.
@@ -15,7 +15,7 @@ async function userTx(ownerId: string) {
   await c.connect();
   await c.query("begin");
   await c.query("select set_config('request.jwt.claims', $1, true)",
-    [JSON.stringify({ sub: ownerId, role: "authenticated", aal: "aal1" })]);
+    [JSON.stringify({ sub: ownerId, role: "authenticated", aal: "aal1", session_id: sessionId })]);
   await c.query("set local role authenticated");
   return c;
 }
@@ -44,6 +44,7 @@ async function overlap(ownerId: string, sqlText: string, params: () => unknown[]
 
 let luck: SupabaseClient;
 let owner: string;
+let sessionId: string;   // sessão desbloqueada de Luck: as transações SQL agem nela (v2.2 R3)
 let account: string;
 let cat: string;
 
@@ -68,7 +69,8 @@ async function reconciliation(card: string) {
 
 beforeAll(async () => {
   owner = await createFinanceUser(testEmail("fin-conc"));
-  luck = await signIn(testEmail("fin-conc"));
+  luck = await signInUnlocked(testEmail("fin-conc"), owner);
+  sessionId = String((await claimsOf(luck)).session_id);
   account = (await must("create_account", {
     p_op: randomUUID(), p_family: owner, p_name: "Banco", p_type: "checking",
     p_opening_date: "2026-01-01", p_opening_balance_cents: 10_000_000,

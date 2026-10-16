@@ -5,6 +5,25 @@ create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 select plan(65);
 
+-- R3: leituras exigem sessão desbloqueada. O login simulado cria a sessão e desbloqueia a
+-- primeira família ativa do usuário (os cenários do desbloqueio estão em 10_v22_unlock).
+create function pg_temp.sid(p_uid uuid) returns uuid language sql immutable as $$
+  select md5('sessao-teste-' || p_uid)::uuid $$;
+create function pg_temp.unlock(p_uid uuid) returns void language plpgsql as $$
+declare v_family uuid;
+begin
+  insert into auth.sessions (id, user_id) values (pg_temp.sid(p_uid), p_uid) on conflict (id) do nothing;
+  select m.household_id into v_family
+    from public.household_members m join public.households h on h.id = m.household_id
+   where m.user_id = p_uid and m.status = 'active' and h.active
+   order by h.name, h.id limit 1;
+  if v_family is not null then
+    insert into private.financial_unlocks (session_id, user_id, family_id)
+    values (pg_temp.sid(p_uid), p_uid, v_family)
+    on conflict (session_id) do update set family_id = excluded.family_id, last_activity_at = now();
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Fixtures: Luck (titular)
 -- ---------------------------------------------------------------------------
@@ -28,7 +47,9 @@ create function pg_temp.day(d date) returns void language sql as $$ select set_c
 create function pg_temp.luck() returns void language plpgsql as $$
 begin
   execute 'reset role';
-  perform set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000001c","role":"authenticated","aal":"aal1"}', true);
+  perform pg_temp.unlock('00000000-0000-0000-0000-00000000001c'::uuid);
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', '00000000-0000-0000-0000-00000000001c', 'role', 'authenticated', 'aal', 'aal1',
+    'session_id', pg_temp.sid('00000000-0000-0000-0000-00000000001c'))::text, true);
   execute 'set local role authenticated';
 end $$;
 create function pg_temp.su() returns void language plpgsql as $$ begin execute 'reset role'; end $$;

@@ -40,6 +40,21 @@ export async function signIn(email: string, password = PASSWORD): Promise<Supaba
   return client;
 }
 
+// v2.2 (R3): login com a senha recém-digitada + desbloqueio financeiro da família.
+export async function signInUnlocked(email: string, family: string, password = PASSWORD): Promise<SupabaseClient> {
+  const client = await signIn(email, password);
+  const { error } = await client.rpc("unlock_finance", { p_family: family });
+  if (error) throw new Error(`desbloqueio falhou para ${email}: ${error.code} ${error.message}`);
+  return client;
+}
+
+// Claims do access token atual (sem verificar assinatura: só para ler session_id/amr em testes).
+export async function claimsOf(client: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data } = await client.auth.getSession();
+  if (!data.session) throw new Error("sem sessão");
+  return JSON.parse(Buffer.from(data.session.access_token.split(".")[1], "base64url").toString());
+}
+
 export async function accessToken(client: SupabaseClient): Promise<string> {
   const { data } = await client.auth.getSession();
   if (!data.session) throw new Error("sem sessão");

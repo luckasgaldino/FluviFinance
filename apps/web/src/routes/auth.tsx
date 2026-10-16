@@ -140,7 +140,9 @@ export function SetPassword() {
       setBusy(false);
       return setError(errorMessage(error));
     }
-    // a ativação (pending → active) acontece no banco ao definir a senha
+    // a ativação (pending → active) acontece no banco ao definir a senha. Um novo login com a
+    // senha recém-definida gera a prova recente que o desbloqueio financeiro exige (v2.2 R3).
+    if (session?.user.email) await supabase.auth.signInWithPassword({ email: session.user.email, password });
     noteLoginPassword();
     await refresh();
     navigate("/", { replace: true });

@@ -1,10 +1,10 @@
 // Família ativa (v2.2 §2): os dados financeiros são da família; o usuário escolhe uma família
-// por vez e nada é misturado. Trocar de família exige novo desbloqueio e limpa o cache.
+// por vez e nada é misturado. Trocar de família limpa o cache; o desbloqueio (finance-lock)
+// é encerrado no servidor e precisa ser refeito para a nova família.
 // Guarda-se só o id da família escolhida (não sensível); o banco revalida o vínculo sempre.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { rpc } from "./api";
-import { useFinanceLock } from "./finance-lock";
 import { useSession } from "./session";
 
 export type Family = { family_id: string; name: string };
@@ -29,7 +29,6 @@ function readChoice(): string | null {
 
 export function FamilyProvider({ children }: { children: ReactNode }) {
   const { session, me } = useSession();
-  const { lock } = useFinanceLock();
   const queryClient = useQueryClient();
   const [choice, setChoice] = useState<string | null>(readChoice);
   const list = useQuery({
@@ -49,9 +48,9 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       // sem armazenamento: a escolha vale até recarregar
     }
     setChoice(familyId);
-    lock();
     queryClient.removeQueries({ queryKey: ["quick"] });
-  }, [active, lock, queryClient]);
+    queryClient.removeQueries({ queryKey: ["fin"] });
+  }, [active, queryClient]);
 
   const value = useMemo(() => ({ families, active, loading: list.isLoading, select }),
     [families, active, list.isLoading, select]);

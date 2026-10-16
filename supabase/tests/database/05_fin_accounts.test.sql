@@ -5,6 +5,25 @@ create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 select plan(35);
 
+-- R3: leituras exigem sessão desbloqueada. O login simulado cria a sessão e desbloqueia a
+-- primeira família ativa do usuário (os cenários do desbloqueio estão em 10_v22_unlock).
+create function pg_temp.sid(p_uid uuid) returns uuid language sql immutable as $$
+  select md5('sessao-teste-' || p_uid)::uuid $$;
+create function pg_temp.unlock(p_uid uuid) returns void language plpgsql as $$
+declare v_family uuid;
+begin
+  insert into auth.sessions (id, user_id) values (pg_temp.sid(p_uid), p_uid) on conflict (id) do nothing;
+  select m.household_id into v_family
+    from public.household_members m join public.households h on h.id = m.household_id
+   where m.user_id = p_uid and m.status = 'active' and h.active
+   order by h.name, h.id limit 1;
+  if v_family is not null then
+    insert into private.financial_unlocks (session_id, user_id, family_id)
+    values (pg_temp.sid(p_uid), p_uid, v_family)
+    on conflict (session_id) do update set family_id = excluded.family_id, last_activity_at = now();
+  end if;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- Fixtures: Admin (a); Luck (1c) e Bia (b) na família F1; Carol (c) na família F2
 -- ---------------------------------------------------------------------------
@@ -38,7 +57,8 @@ create function pg_temp.cat(p text, kind public.category_kind default 'expense')
 create function pg_temp.login(p_uid uuid, p_aal text default 'aal1') returns void language plpgsql as $$
 begin
   execute 'reset role';
-  perform set_config('request.jwt.claims', jsonb_build_object('sub', p_uid, 'role', 'authenticated', 'aal', p_aal)::text, true);
+  perform pg_temp.unlock(p_uid);
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', p_uid, 'role', 'authenticated', 'aal', p_aal, 'session_id', pg_temp.sid(p_uid))::text, true);
   execute 'set local role authenticated';
 end $$;
 

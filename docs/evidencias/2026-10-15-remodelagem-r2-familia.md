@@ -73,7 +73,7 @@
 
 Os usuários fictícios existentes ganham, cada um, a própria "Família de \<nome\>".
 
-## Deploy no fluvi-dev (16/10/2026, ~22:25–22:40 BRT)
+## Deploy no fluvi-dev (15/10/2026, ~22:25–22:40 BRT)
 
 Autorizado pelo responsável em 15/10/2026 ("Pode seguir, claro… pode executar toda ação que você achar pertinente"). O ambiente tem só dados fictícios.
 

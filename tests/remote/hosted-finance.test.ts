@@ -45,6 +45,9 @@ async function fictitious(name: string): Promise<{ id: string; client: SupabaseC
   const client = createClient(url, anonKey, noPersist);
   const login = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (login.error) throw login.error;
+  // v2.2 R3: leitura exige desbloqueio da família (senha recém-digitada no login acima)
+  const unlock = await client.rpc("unlock_finance", { p_family: data.user.id });
+  if (unlock.error) throw unlock.error;
   return { id: data.user.id, client };
 }
 
