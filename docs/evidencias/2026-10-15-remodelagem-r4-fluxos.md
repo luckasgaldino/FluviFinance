@@ -48,3 +48,17 @@
 - **Extrato com filtros por conta e cartão (FF-10):** o extrato por conta e a lista mensal de lançamentos existem; faltam filtros combinados.
 - **R5:** convites, aceite e troca de família no admin.
 - **R6:** PWA instalável (manifest e service worker sem cache de API) e homologação no iPhone.
+
+## Deploy no fluvi-dev (15–16/10/2026, ~23:50 BRT)
+
+Sob a autorização do responsável para executar as ações pertinentes. O ambiente tem só dados fictícios.
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`4ff7a2e`, execução 38842194363) |
+| Backup pré-deploy + restauração isolada | `2026-10-16T02-52-34-942Z.dump.enc`; **PASS** (68 itens, 358 pgTAP da suíte pré-R4) |
+| `db push` | `20261017000300_family_reports.sql` aplicada sem erro |
+| `supabase test db --linked` | **384/384 PASS** |
+| Testes remotos | **11/11 PASS** |
+| Merge na `main` → deploy | `deploy-dev` e CI verdes (`4ff7a2e`); `/relatorios` 200 |
+| Backup pós-deploy + restauração isolada | `2026-10-16T03-02-39-937Z.dump.enc`; **PASS** (384 pgTAP no restaurado) |
