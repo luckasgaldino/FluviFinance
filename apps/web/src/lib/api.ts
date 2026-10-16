@@ -39,7 +39,7 @@ export type AdminUser = {
 };
 
 export type Household = { id: string; name: string; active: boolean };
-export type Member = { household_id: string; user_id: string; status: "active" | "suspended" | "removed" };
+export type Member = { household_id: string; user_id: string; status: "invited" | "active" | "suspended" | "removed" };
 
 export const statusLabel: Record<string, string> = {
   pending: "Pendente",
@@ -47,6 +47,7 @@ export const statusLabel: Record<string, string> = {
   blocked: "Bloqueado",
   suspended: "Suspenso",
   removed: "Removido",
+  invited: "Convite pendente",
 };
 
 // ---------------------------------------------------------------------------

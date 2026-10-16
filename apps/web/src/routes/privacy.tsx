@@ -12,6 +12,7 @@ import { errorMessage } from "../lib/errors";
 import { useFamily } from "../lib/family";
 import { useFinanceLock } from "../lib/finance-lock";
 import { useSession } from "../lib/session";
+import { NoFamily } from "./invites";
 
 // ---------------------------------------------------------------------------
 // Tela inicial discreta: nenhum dado financeiro, só a ação principal.
@@ -45,18 +46,12 @@ export function RequireUnlock({ children }: { children?: ReactNode }) {
   }, [unlocked, touch]);
 
   const { active, loading } = useFamily();
-  if (!unlocked) return <UnlockScreen />;
+  // sem família (ou só com convite pendente) não há o que desbloquear
   if (!loading && !active) return <NoFamily />;
+  if (!unlocked) return <UnlockScreen />;
   return <>{children ?? <Outlet />}</>;
 }
 
-export function NoFamily() {
-  return (
-    <Alert kind="info">
-      Você ainda não faz parte de uma família. Peça ao administrador para vincular sua conta.
-    </Alert>
-  );
-}
 
 function UnlockScreen() {
   const { unlock, ready } = useFinanceLock();

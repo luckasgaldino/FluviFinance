@@ -5,7 +5,7 @@ import { PageTitle } from "../components/ui";
 import { useFamily } from "../lib/family";
 import { useFinanceLock } from "../lib/finance-lock";
 import { useSession } from "../lib/session";
-import { NoFamily } from "./privacy";
+import { FamilyInvites, NoFamily } from "./invites";
 
 export function Settings() {
   const { session, signOut } = useSession();
@@ -31,6 +31,7 @@ export function Settings() {
           uma família, escolha aqui qual está ativa — os dados nunca se misturam.
         </p>
       </section>
+      {active && <FamilyInvites />}
       <section className="card stack" aria-labelledby="cfg-priv">
         <h2 id="cfg-priv">Privacidade</h2>
         <p className="muted">

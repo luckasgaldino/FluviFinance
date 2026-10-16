@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(82);
+select plan(90);
 
 -- R3: leituras exigem sessão desbloqueada. O login simulado cria a sessão e desbloqueia a
 -- primeira família ativa do usuário (os cenários do desbloqueio estão em 10_v22_unlock).
@@ -351,9 +351,17 @@ select is((select count(*)::int from public.test_private_records), 7,
   'suspender Luck não move nem esconde nada da família (nenhum lançamento é transferido)');
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000a', 'aal2');
-select public.admin_set_household_member('11111111-0000-0000-0000-000000000006',
-  '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-00000000001c', 'active');
+select is((public.admin_set_household_member('11111111-0000-0000-0000-000000000006',
+  '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-00000000001c', 'active') ->> 'status'),
+  'invited', 'FAM-03: vincular alguém a uma família gera convite, não acesso');
 select pg_temp.login('00000000-0000-0000-0000-00000000001c');
+select is((select count(*)::int from public.test_private_records), 0,
+  'FAM-03: antes do aceite, nada da Família C é liberado');
+select is((select array_agg(name) from public.my_family_invites()), array['Família C'],
+  'o convite aparece para a própria pessoa');
+select lives_ok($$ select public.accept_family_invite('00000000-0000-0000-0000-0000000000f3') $$,
+  'a própria pessoa aceita o convite');
+select pg_temp.login('00000000-0000-0000-0000-00000000001c');  -- novo desbloqueio, já com a família ativa
 select is((select count(*)::int from public.test_private_records), 1,
   'realocado para a Família C, Luck vê só a Família C, sem levar o histórico da A');
 select is((select array_agg(family_id) from public.my_families()),
@@ -363,12 +371,31 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a', 'aal2');
 select public.admin_set_household_member('11111111-0000-0000-0000-000000000007',
   '00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-00000000001c', 'active');
 select pg_temp.login('00000000-0000-0000-0000-00000000001c');
+select is((select count(*)::int from public.test_private_records
+            where family_id = '00000000-0000-0000-0000-0000000000f1'), 0,
+  'FAM-03: voltar a uma família após suspensão também exige novo aceite');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select throws_ok($$ select public.accept_family_invite('00000000-0000-0000-0000-0000000000f3') $$,
+  'P0002', null, 'ninguém aceita convite alheio');
+select pg_temp.login('00000000-0000-0000-0000-00000000001c');
+select public.accept_family_invite('00000000-0000-0000-0000-0000000000f1');
+select pg_temp.login('00000000-0000-0000-0000-00000000001c');
 select is((select array_agg(family_id) from public.my_families()),
   array['00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000f3']::uuid[],
   'membro de duas famílias: as duas aparecem para seleção explícita da família ativa');
 select is((select count(*)::int from public.test_private_records
             where family_id = '00000000-0000-0000-0000-0000000000f1'), 7,
-  'reativado na Família A, Luck volta a ver o histórico dela (a separação por família ativa é do cliente e, na R3, do desbloqueio)');
+  'aceito na Família A, Luck volta a ver o histórico dela (a separação por família ativa é do cliente e do desbloqueio)');
+
+-- recusar: o convite some e nada é liberado
+select pg_temp.login('00000000-0000-0000-0000-00000000000a', 'aal2');
+select public.admin_set_household_member('11111111-0000-0000-0000-000000000009',
+  '00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-00000000000b', 'active');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select lives_ok($$ select public.decline_family_invite('00000000-0000-0000-0000-0000000000f2') $$, 'recusar um convite');
+select is((select count(*)::int from public.my_family_invites()) + (select count(*)::int from public.test_private_records
+            where family_id = '00000000-0000-0000-0000-0000000000f2'), 0, 'convite recusado não libera nada e sai da lista');
+
 
 -- ---------------------------------------------------------------------------
 -- 9. Usuário bloqueado (B9)

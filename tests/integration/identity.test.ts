@@ -160,6 +160,15 @@ describe("Admin com MFA (aal2) provisiona por convite real", () => {
     const { data } = await luck.rpc("whoami");
     expect(data).toMatchObject({ user_id: ids.luck, status: "active", is_financial_user: true, can_administer: false });
   });
+
+  it("v2.2 (FAM-03): o vínculo indicado no convite é um convite de família; só o aceite libera", async () => {
+    expect((await luck.rpc("my_families")).data).toEqual([]);
+    const invites = (await luck.rpc("my_family_invites")).data as { family_id: string }[];
+    expect(invites.map((i) => i.family_id)).toEqual([householdId]);
+    expect((await luck.rpc("accept_family_invite", { p_family: householdId })).error).toBeNull();
+    expect((await bia.rpc("accept_family_invite", { p_family: householdId })).error).toBeNull();
+    expect((await luck.rpc("my_family_invites")).data).toEqual([]);
+  });
 });
 
 describe("Retomada de provisionamento (B13)", () => {
@@ -265,6 +274,9 @@ describe("Isolamento entre Luck e Bia via PostgREST", () => {
       p_request_id: randomUUID(), p_household_id: householdId, p_user_id: ids.luck, p_status: "active",
     });
     expect(back.error).toBeNull();
+    expect(back.data.status).toBe("invited");                 // voltar também exige aceite
+    expect((await luck.rpc("my_families")).data).toEqual([]);
+    expect((await luck.rpc("accept_family_invite", { p_family: householdId })).error).toBeNull();
     expect((await luck.rpc("my_families")).data).toHaveLength(1);
 
     const audit = await admin.from("audit_events").select("actor_id, action").eq("request_id", suspendRequest);

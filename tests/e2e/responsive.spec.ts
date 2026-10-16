@@ -71,7 +71,7 @@ test("painel administrativo cabe em 360 px", async ({ page }) => {
   await page.getByLabel("Código de 6 dígitos").fill(await freshTotp(secret));
   await page.getByRole("button", { name: "Confirmar" }).click();
 
-  for (const [link, heading] of [["Usuários", "Usuários"], ["Núcleos e vínculos", "Núcleos e vínculos"],
+  for (const [link, heading] of [["Usuários", "Usuários"], ["Famílias e membros", "Famílias e membros"],
     ["Auditoria", "Auditoria"]]) {
     await page.getByRole("button", { name: "Abrir menu" }).click();
     await page.getByRole("dialog", { name: "Menu" }).getByRole("link", { name: link }).click();

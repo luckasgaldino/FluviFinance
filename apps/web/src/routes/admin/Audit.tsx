@@ -11,7 +11,7 @@ type AuditEvent = {
 };
 
 const entityLabel: Record<string, string> = {
-  profiles: "Perfil", administrators: "Papel de Admin", households: "Núcleo",
+  profiles: "Perfil", administrators: "Papel de Admin", households: "Família",
   household_members: "Vínculo", data_grants: "Permissão",
 };
 

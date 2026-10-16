@@ -60,9 +60,9 @@ function InviteForm() {
           <Field label="Nome" name="display_name" required maxLength={80} />
           <Field label="E-mail" name="email" type="email" required />
           <div className="field">
-            <label htmlFor="invite-household">Núcleo</label>
+            <label htmlFor="invite-household">Família</label>
             <select id="invite-household" name="household_id" defaultValue="">
-              <option value="">Sem núcleo por enquanto</option>
+              <option value="">Sem família por enquanto</option>
               {households.data?.filter((h) => h.active).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
             </select>
           </div>

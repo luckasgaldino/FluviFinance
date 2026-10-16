@@ -28,7 +28,7 @@ export const userNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { to: "/admin/usuarios", label: "Usuários", icon: <IconUsers /> },
-  { to: "/admin/nucleos", label: "Núcleos e vínculos", icon: <IconHome /> },
+  { to: "/admin/nucleos", label: "Famílias e membros", icon: <IconHome /> },
   { to: "/admin/auditoria", label: "Auditoria", icon: <IconReport /> },
 ];
 

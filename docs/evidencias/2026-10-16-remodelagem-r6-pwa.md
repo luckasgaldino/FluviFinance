@@ -23,6 +23,7 @@
 - **Causa:** o edge runtime local, com a política `per_worker`, reaproveita o isolate entre requisições. Ao atingir o limite de tempo total, ele é encerrado no meio de uma requisição. O log mostrava "wall clock duration warning" seguido de "early termination", exatamente nos convites que falharam.
 - **Correção:** `policy = "oneshot"` no `config.toml`, um worker por requisição. Vale só para local e CI; o hospedado tem ciclo de vida próprio.
 - **Verificação:** fluxo admin 3 vezes seguidas sem falha; suíte completa verde.
+- **Atualização (R5):** a lentidão voltou uma vez com `oneshot`, sem encerramento: a requisição só passou de 10 s. Em uso normal o convite leva de 0,6 a 1,3 s (medido na integração). A espera desse passo no E2E foi para 30 s, com o motivo registrado. A causa exata da latência ocasional do edge runtime local (worker novo + envio do e-mail) segue em observação; o G4 continua aberto, agora mitigado.
 
 ## Testes (local)
 

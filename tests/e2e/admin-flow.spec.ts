@@ -42,8 +42,12 @@ async function acceptInviteInBrowser(browser: Browser, email: string) {
   await page.getByLabel("Nova senha").fill(PASSWORD);
   await page.getByLabel("Confirme a senha").fill(PASSWORD);
   await page.getByRole("button", { name: "Salvar senha" }).click();
-  // senha recém-definida no desktop: o dashboard já abre liberado (v2.2 §3.1)
+  // v2.2 FAM-03: a família indicada no convite é aceita no app, com aviso do histórico; a senha
+  // recém-definida no desktop libera o dashboard logo em seguida (§3.1)
   await expect(page).toHaveURL(/\/painel$/);
+  await expect(page.getByText("todo o histórico financeiro")).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole("listitem", { name: householdName }).getByRole("button", { name: "Aceitar" }).click();
   await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   await expect(page.getByText(email)).toBeVisible();
   return page;
@@ -66,24 +70,25 @@ test("Admin sem MFA é obrigado a cadastrar TOTP antes de administrar", async ({
   await expect(page.getByRole("heading", { name: "Usuários" })).toBeVisible();
 });
 
-test("Admin cria núcleo e convida Luck e Bia; contas ficam pendentes", async ({ browser }) => {
+test("Admin cria família e convida Luck e Bia; contas ficam pendentes", async ({ browser }) => {
   const page = await adminPage(browser);
-  await page.getByRole("link", { name: "Núcleos e vínculos" }).click();
-  await expect(page.getByRole("heading", { name: "Núcleos e vínculos", level: 1 })).toBeVisible();
-  await page.getByLabel("Nome do núcleo").fill(householdName);
+  await page.getByRole("link", { name: "Famílias e membros" }).click();
+  await expect(page.getByRole("heading", { name: "Famílias e membros", level: 1 })).toBeVisible();
+  await page.getByLabel("Nome da família").fill(householdName);
   await page.getByRole("button", { name: "Criar" }).click();
   await expect(page.getByRole("heading", { name: householdName })).toBeVisible();
   await expectAccessible(page);
 
   await page.getByRole("link", { name: "Usuários" }).click();
-  // espera a navegação: "Nome" também casaria com "Nome do núcleo" da página anterior
+  // espera a navegação: "Nome" também casaria com "Nome da família" da página anterior
   await expect(page.getByRole("heading", { name: "Usuários", level: 1 })).toBeVisible();
   for (const [name, email] of [["Luck", luckEmail], ["Bia", biaEmail]]) {
     await page.getByLabel("Nome", { exact: true }).fill(name);
     await page.getByLabel("E-mail").fill(email);
-    await page.getByLabel("Núcleo", { exact: true }).selectOption({ label: householdName });
+    await page.getByLabel("Família", { exact: true }).selectOption({ label: householdName });
     await page.getByRole("button", { name: "Enviar convite" }).click();
-    await expect(page.getByText("Convite enviado")).toBeVisible();
+    // a Edge Function local às vezes passa de 10 s (worker novo + envio do e-mail de convite; G4)
+    await expect(page.getByText("Convite enviado")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("listitem", { name })).toContainText("Pendente");
   }
   await expectAccessible(page);
