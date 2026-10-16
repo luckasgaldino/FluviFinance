@@ -28,3 +28,15 @@
 | E2E | novo `edit-categories`: categoria da família, filtro por categoria, edição de R$ 70 para R$ 50 (original "Editado", saldo R$ 930), arquivar remove a categoria do lançamento rápido |
 
 **Bateria local:** pgTAP **417/417** (12 arquivos), integração 58/58, E2E **43/43**, unitários 33/33, build e `db lint` ok, restauração **PASS** (417 pgTAP no restaurado).
+
+## Deploy no fluvi-dev (16/10/2026, ~01:40–01:55 BRT)
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`e31dcf8`, 38851320802) |
+| Backup pré-deploy + restauração isolada | `2026-10-16T04-40-11-729Z.dump.enc`; **PASS** (392 pgTAP da suíte pré-R4b) |
+| `db push` | `20261017000600_edit_and_categories.sql` aplicada |
+| `supabase test db --linked` | **417/417 PASS** |
+| Testes remotos | **11/11 PASS** |
+| Merge na `main` → deploy | `deploy-dev` e CI verdes (`e31dcf8`) |
+| Backup pós-deploy + restauração isolada | `2026-10-16T04-49-45-536Z.dump.enc`; **PASS** (417 pgTAP) |
