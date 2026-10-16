@@ -32,7 +32,7 @@ async function sql<T>(text: string, params: unknown[] = []): Promise<T[]> {
   try { return (await c.query(text, params)).rows as T[]; } finally { await c.end(); }
 }
 
-async function fictitious(name: string): Promise<{ id: string; client: SupabaseClient }> {
+async function fictitious(name: string, unlock = true): Promise<{ id: string; client: SupabaseClient }> {
   const email = `${name}.${run}@fluvi.test`;
   const { data, error } = await service.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true });
   if (error) throw error;
@@ -46,8 +46,10 @@ async function fictitious(name: string): Promise<{ id: string; client: SupabaseC
   const login = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (login.error) throw login.error;
   // v2.2 R3: leitura exige desbloqueio da família (senha recém-digitada no login acima)
-  const unlock = await client.rpc("unlock_finance", { p_family: data.user.id });
-  if (unlock.error) throw unlock.error;
+  if (unlock) {
+    const r = await client.rpc("unlock_finance", { p_family: data.user.id });
+    if (r.error) throw r.error;
+  }
   return { id: data.user.id, client };
 }
 
@@ -69,7 +71,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const id of [ids.a, ids.b].filter(Boolean)) {
+  for (const id of [ids.a, ids.b, ids.c].filter(Boolean)) {
     await service.from("profiles").update({ status: "blocked" }).eq("user_id", id);
   }
 });
@@ -131,5 +133,17 @@ describe("Marco B no fluvi-dev (API hospedada)", () => {
     const anon = createClient(url, anonKey, noPersist);
     const anonRead = await anon.from("transactions").select("id").limit(1);
     expect(anonRead.error?.code).toBe("42501");
+  });
+
+  it("PRIV-09 no hospedado: logado sem desbloqueio não lê nada; ao desbloquear, lê", async () => {
+    const { id, client } = await fictitious("remoto-fin-c", false);
+    ids.c = id;
+    const acc = await client.rpc("create_account", { p_op: randomUUID(), p_family: id, p_name: "Banco C", p_type: "checking",
+      p_opening_date: today, p_opening_balance_cents: 1000 });
+    expect(Object.keys(acc.data).sort()).toEqual(["id", "status"]);
+    expect((await client.from("financial_accounts").select("id")).data).toEqual([]);
+    expect((await client.from("v_account_balances").select("*")).data).toEqual([]);
+    expect((await client.rpc("unlock_finance", { p_family: id })).error).toBeNull();
+    expect((await client.from("financial_accounts").select("id")).data).toHaveLength(1);
   });
 });
