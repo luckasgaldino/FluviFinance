@@ -26,3 +26,14 @@
 | E2E | novo `opening-flow`: fatura aberta + 3 parcelas antigas → dívida R$ 900, consumo R$ 0, Parcelas mostra R$ 600 |
 
 **Bateria local:** pgTAP 437/437, integração 58/58, E2E 58/58 (4 projetos), unitários 33/33, build e `db lint` ok (sem avisos), restauração **PASS** (437 pgTAP).
+
+## Deploy no fluvi-dev (16/10/2026, ~10:10–10:35 BRT)
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`c6a9fe6`, 38904677018) |
+| Backup pré-deploy + restauração isolada | `2026-10-16T13-08-22-181Z.dump.enc`; **PASS** (417 pgTAP da suíte anterior) |
+| `db push` | `20261017000700_card_opening_type.sql` e `20261017000800_card_opening_balance.sql` |
+| `supabase test db --linked` | **437/437 PASS** |
+| Merge na `main` → deploy | `deploy-dev` e CI verdes (`c6a9fe6`) |
+| Backup pós-deploy + restauração isolada | `2026-10-16T13-19-23-000Z.dump.enc`; **PASS** (437 pgTAP) |
