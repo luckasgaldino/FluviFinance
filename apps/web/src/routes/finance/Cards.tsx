@@ -1,5 +1,5 @@
 // Cartões e faturas (FF-04): cadastro, posições (§5.5), ciclos e regras (§20.9), da família ativa.
-import { formatDate, parseBRL } from "@fluvi/domain";
+import { businessToday, formatBRL, formatDate, parseBRL } from "@fluvi/domain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
@@ -11,7 +11,7 @@ import {
 import { errorMessage } from "../../lib/errors";
 import { useFamilyId } from "../../lib/family";
 import { supabase } from "../../lib/supabase";
-import { Money } from "./Accounts";
+import { Money, useAccounts } from "./Accounts";
 
 const positionKeys: (keyof CardPosition)[] = ["credit_limit_cents", "debt_total_cents", "closed_remaining_cents",
   "open_preview_cents", "future_installments_cents", "unapplied_credit_cents", "available_limit_cents"];
@@ -194,9 +194,64 @@ function RulesForm({ card, onDone }: { card: Card; onDone: (msg: string) => void
   );
 }
 
+// Pagamento de fatura (FF-04, FIN-03): integral ou parcial, a partir de uma conta da família.
+// Reduz caixa e dívida; não é consumo novo (a compra já entrou na competência).
+function PayBillForm({ cycle, onDone }: { cycle: CardCycle; onDone: (msg?: string) => void }) {
+  const queryClient = useQueryClient();
+  const accounts = useAccounts();
+  const [op] = useState(() => crypto.randomUUID());
+  const [error, setError] = useState("");
+  const remaining = cycle.remaining_cents ?? 0;
+  const pay = useMutation({
+    mutationFn: (args: Record<string, unknown>) => rpc("settle_obligation", args),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["fin"] });
+      onDone("Pagamento registrado.");
+    },
+    onError: (e) => setError(errorMessage(e)),
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const amount = parseBRL(String(f.get("amount")));
+    if (amount === null || amount <= 0) return setError("Informe um valor maior que zero, no formato 1.234,56.");
+    if (amount > remaining) return setError(`O valor não pode passar do saldo da fatura (${formatBRL(remaining)}).`);
+    if (!f.get("account")) return setError("Escolha a conta de pagamento.");
+    setError("");
+    pay.mutate({ p_op: op, p_obligation: cycle.obligation_id, p_account: String(f.get("account")),
+      p_amount_cents: amount, p_paid_on: String(f.get("date")) });
+  }
+
+  return (
+    <form className="card stack" onSubmit={onSubmit} noValidate aria-label="Pagar fatura">
+      <h3>Pagar fatura que vence em {formatDate(cycle.due_on)}</h3>
+      <p className="muted">Saldo da fatura: <Money cents={remaining} />. O pagamento sai da conta e reduz a dívida do cartão.</p>
+      <div className="row">
+        <Field label="Valor (R$)" name="amount" inputMode="decimal" autoComplete="off"
+          defaultValue={(remaining / 100).toFixed(2).replace(".", ",")} />
+        <div className="field">
+          <label htmlFor="pay-account">Conta</label>
+          <select id="pay-account" name="account" defaultValue="">
+            <option value="" disabled>{accounts.data?.length ? "Escolha…" : "Nenhuma conta cadastrada"}</option>
+            {accounts.data?.filter((a) => a.active).map((a) => <option key={a.account_id} value={a.account_id}>{a.name}</option>)}
+          </select>
+        </div>
+        <Field label="Data do pagamento" name="date" type="date" defaultValue={businessToday()} />
+      </div>
+      <Alert kind="error">{error}</Alert>
+      <div className="row" style={{ alignItems: "center" }}>
+        <button className="btn" type="submit" disabled={pay.isPending}>Confirmar pagamento</button>
+        <button className="btn secondary" type="button" onClick={() => onDone()}>Cancelar</button>
+      </div>
+    </form>
+  );
+}
+
 export function CardDetail() {
   const { id } = useParams();
   const [editing, setEditing] = useState(false);
+  const [paying, setPaying] = useState<CardCycle | null>(null);
   const [feedback, setFeedback] = useState("");
   const family = useFamilyId();
   const card = useQuery({
@@ -282,10 +337,14 @@ export function CardDetail() {
               <div className="actions">
                 <Money cents={y.status === "closed" ? y.remaining_cents ?? 0 : y.amount_cents} />
                 <StatusBadge status={cycleBadge(y)} label={cycleLabel(y)} />
+                {y.status === "closed" && (y.remaining_cents ?? 0) > 0 && y.obligation_id && (
+                  <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setPaying(y); }}>Pagar</button>
+                )}
               </div>
             </li>
           ))}
         </ul>
+        {paying && <PayBillForm cycle={paying} onDone={(msg) => { setPaying(null); if (msg) setFeedback(msg); }} />}
       </section>
 
       <section className="card stack" aria-labelledby="compras">
