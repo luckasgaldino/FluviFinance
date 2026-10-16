@@ -1,5 +1,6 @@
 // Deploy do Marco B no fluvi-dev (plano §2.4.3): fluxo financeiro pela API hospedada,
-// com JWT real e identidades FICTÍCIAS. Confere EQ-1 e isolamento entre titulares.
+// com JWT real e identidades FICTÍCIAS. Confere EQ-1 e isolamento entre famílias (v2.2:
+// cada identidade fictícia ganha a própria família, com o mesmo UUID).
 // Identidades com histórico financeiro não são apagáveis (razão somente-acréscimo):
 // ao final são BLOQUEADAS (plano D-3; anonimização é o C-4).
 //   FLUVI_REMOTE_URL, FLUVI_REMOTE_ANON_KEY, FLUVI_REMOTE_SERVICE_KEY, FLUVI_REMOTE_DB_URL (projeto DEV)
@@ -39,6 +40,8 @@ async function fictitious(name: string): Promise<{ id: string; client: SupabaseC
     provisioned_at: new Date().toISOString(), status: "active", activation_completed_at: new Date().toISOString(),
   }).eq("user_id", data.user.id);
   if (upd.error) throw upd.error;
+  await sql("insert into public.households (id, name) values ($1, $2)", [data.user.id, `Família ${name}.${run}`]);
+  await sql("insert into public.household_members (household_id, user_id) values ($1, $1)", [data.user.id]);
   const client = createClient(url, anonKey, noPersist);
   const login = await client.auth.signInWithPassword({ email, password: PASSWORD });
   if (login.error) throw login.error;
@@ -57,7 +60,7 @@ const eq = async (card: string) =>
 beforeAll(async () => {
   ({ id: ids.a, client: a } = await fictitious("remoto-fin-a"));
   ({ id: ids.b, client: b } = await fictitious("remoto-fin-b"));
-  const { data } = await a.from("categories").select("id, name").is("owner_user_id", null);
+  const { data } = await a.from("categories").select("id, name").is("family_id", null);
   ids.cat = data!.find((c) => c.name === "Mercado")!.id;
   ids.bill = data!.find((c) => c.name === "Moradia")!.id;
 });
@@ -70,9 +73,9 @@ afterAll(async () => {
 
 describe("Marco B no fluvi-dev (API hospedada)", () => {
   it("conta, cartão, compra parcelada, estorno e anulação mantêm a EQ-1", async () => {
-    ids.acc = (await must(a, "create_account", { p_op: randomUUID(), p_owner: ids.a, p_name: "Banco", p_type: "checking",
+    ids.acc = (await must(a, "create_account", { p_op: randomUUID(), p_family: ids.a, p_name: "Banco", p_type: "checking",
       p_opening_date: "2026-01-01", p_opening_balance_cents: 1_000_000 })).id;
-    ids.card = (await must(a, "create_card", { p_op: randomUUID(), p_owner: ids.a, p_name: "Cartão", p_closing_day: 5,
+    ids.card = (await must(a, "create_card", { p_op: randomUUID(), p_family: ids.a, p_name: "Cartão", p_closing_day: 5,
       p_due_day: 15 })).id;
     const purchase = (await must(a, "create_card_purchase", { p_op: randomUUID(), p_card: ids.card, p_amount_cents: 120_000,
       p_installments: 6, p_description: "Compra 6x", p_category: ids.cat, p_local_date: today })).id;
@@ -89,7 +92,7 @@ describe("Marco B no fluvi-dev (API hospedada)", () => {
   });
 
   it("conta a pagar com pagamento parcial: competência reconhecida, caixa só o pago", async () => {
-    const obl = (await must(a, "create_obligation", { p_op: randomUUID(), p_owner: ids.a, p_type: "bill",
+    const obl = (await must(a, "create_obligation", { p_op: randomUUID(), p_family: ids.a, p_type: "bill",
       p_description: "Aluguel", p_category: ids.bill, p_amount_cents: 50_000, p_due_date: today })).id;
     await must(a, "settle_obligation", { p_op: randomUUID(), p_obligation: obl, p_account: ids.acc,
       p_amount_cents: 20_000, p_paid_on: today });
@@ -103,19 +106,19 @@ describe("Marco B no fluvi-dev (API hospedada)", () => {
   it("idempotência: a mesma client_operation_id 3× gera uma operação", async () => {
     const op = randomUUID();
     for (let i = 0; i < 3; i++) {
-      await must(a, "create_transaction", { p_op: op, p_owner: ids.a, p_type: "expense", p_account: ids.acc,
+      await must(a, "create_transaction", { p_op: op, p_family: ids.a, p_type: "expense", p_account: ids.acc,
         p_amount_cents: 1_234, p_description: "Repetida", p_category: ids.cat, p_local_date: today });
     }
     const [row] = await sql<{ n: number }>(
-      "select count(*)::int as n from public.transactions where owner_user_id = $1 and client_operation_id = $2", [ids.a, op]);
+      "select count(*)::int as n from public.transactions where family_id = $1 and client_operation_id = $2", [ids.a, op]);
     expect(row.n).toBe(1);
   });
 
-  it("isolamento: outro titular sem grant não lê nem escreve, e recebe o erro único", async () => {
-    const write = await b.rpc("create_transaction", { p_op: randomUUID(), p_owner: ids.a, p_type: "expense",
+  it("isolamento: outra família não lê nem escreve, e recebe o erro único", async () => {
+    const write = await b.rpc("create_transaction", { p_op: randomUUID(), p_family: ids.a, p_type: "expense",
       p_account: ids.acc, p_amount_cents: 100, p_description: "x", p_category: ids.cat, p_local_date: today });
     expect(write.error?.code).toBe("P0002");
-    const ghost = await b.rpc("create_transaction", { p_op: randomUUID(), p_owner: ids.b, p_type: "expense",
+    const ghost = await b.rpc("create_transaction", { p_op: randomUUID(), p_family: ids.b, p_type: "expense",
       p_account: randomUUID(), p_amount_cents: 100, p_description: "x", p_category: ids.cat, p_local_date: today });
     expect(ghost.error?.code).toBe("P0002");
     for (const table of ["transactions", "financial_accounts", "ledger_entries", "credit_cards", "obligations"]) {
