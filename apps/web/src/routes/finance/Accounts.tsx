@@ -98,7 +98,7 @@ export function Accounts() {
   return (
     <>
       <PageTitle>Contas</PageTitle>
-      {!creating && <div><button className="btn" type="button" onClick={() => setCreating(true)}>Nova conta</button></div>}
+      {!creating && <div className="toolbar"><button className="btn" type="button" onClick={() => setCreating(true)}>Nova conta</button></div>}
       {creating && <NewAccountForm onDone={() => setCreating(false)} />}
       <section className="card stack" aria-labelledby="saldos">
         <h2 id="saldos">Saldos de hoje</h2>

@@ -43,7 +43,7 @@ jobs:
         run: pnpm test:integration
 
       - name: Navegador para E2E
-        run: pnpm --filter @fluvi/tests exec playwright install --with-deps chromium
+        run: pnpm --filter @fluvi/tests exec playwright install --with-deps chromium webkit
 
       - name: Testes E2E (fluxos, acessibilidade, 360 px)
         run: pnpm test:e2e

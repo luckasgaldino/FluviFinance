@@ -11,7 +11,7 @@ test.beforeAll(async () => {
 
 test("manifest, ícones e metadados de iOS", async ({ page, request }) => {
   const manifest = await (await request.get("/manifest.webmanifest")).json();
-  expect(manifest).toMatchObject({ name: "FluviFiance", display: "standalone", start_url: "/", lang: "pt-BR" });
+  expect(manifest).toMatchObject({ name: "FluviFinance", display: "standalone", start_url: "/", lang: "pt-BR" });
   for (const icon of manifest.icons as { src: string }[]) {
     const res = await request.get(icon.src);
     expect(res.status(), icon.src).toBe(200);

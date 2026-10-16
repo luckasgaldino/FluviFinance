@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { IconPlus } from "../../components/icons";
-import { Alert, PageTitle } from "../../components/ui";
+import { Alert, MonthNav as MonthNavUi, PageTitle } from "../../components/ui";
 import { rpc } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import { useFamilyId } from "../../lib/family";
@@ -75,13 +75,7 @@ function Flow({ months, label }: { months: MonthFlow[]; label: string }) {
 }
 
 function MonthNav({ month, onChange }: { month: string; onChange: (m: string) => void }) {
-  return (
-    <div className="row" style={{ alignItems: "center", marginBottom: 16 }}>
-      <button className="btn secondary" type="button" onClick={() => onChange(addMonths(month, -1))} aria-label="Mês anterior">‹</button>
-      <strong style={{ textAlign: "center" }} aria-live="polite">{cap(monthLabel(month))}</strong>
-      <button className="btn secondary" type="button" onClick={() => onChange(addMonths(month, 1))} aria-label="Próximo mês">›</button>
-    </div>
-  );
+  return <MonthNavUi label={cap(monthLabel(month))} onPrev={() => onChange(addMonths(month, -1))} onNext={() => onChange(addMonths(month, 1))} />;
 }
 
 const monthsAsBars = (xs: MonthValue[]) => xs.map((m) => ({ name: cap(monthLabel(m.month)), cents: Number(m.cents) }));
@@ -249,7 +243,7 @@ export function Reports() {
       : tab === "autoria" ? [["Quem lançou", "Consumo (R$)"], ...r.by_author.map((a) => [a.name, reais(a.cents)])]
       : [["Mês", "Parcelas a faturar (R$)"], ...r.commitments.map((m) => [m.month.slice(0, 7), reais(m.cents)])];
     const url = URL.createObjectURL(new Blob(["﻿" + toCsv(rows)], { type: "text/csv;charset=utf-8" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: `fluvifiance-${tab}-${from.slice(0, 7)}-a-${to.slice(0, 7)}.csv` });
+    const a = Object.assign(document.createElement("a"), { href: url, download: `fluvifinance-${tab}-${from.slice(0, 7)}-a-${to.slice(0, 7)}.csv` });
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -276,7 +270,7 @@ export function Reports() {
           </label>
         ))}
       </fieldset>
-      <fieldset className="segmented" style={{ marginBottom: 16 }}>
+      <fieldset className="segmented grid-2" style={{ marginBottom: 16 }}>
         <legend className="visually-hidden">Relatório</legend>
         {tabs.map((t) => (
           <label key={t.value}>

@@ -1,5 +1,6 @@
 // Componentes de interface pequenos e acessíveis.
 import { useEffect, useId, useRef, type InputHTMLAttributes, type ReactNode } from "react";
+import { IconChevronLeft, IconChevronRight } from "./icons";
 
 // Título da página recebe foco ao trocar de rota (leitor de tela anuncia a página).
 export function PageTitle({ children }: { children: ReactNode }) {
@@ -39,7 +40,7 @@ export function StatusBadge({ status, label }: { status: string; label: string }
 }
 
 export function Brand({ compact = false }: { compact?: boolean }) {
-  const mark = <div className="brand"><img src="/favicon.svg" alt="" /><span>Fluvi<span className="accent">Fiance</span></span></div>;
+  const mark = <div className="brand"><img src="/favicon.svg" alt="" /><span>Fluvi<span className="accent">Finance</span></span></div>;
   if (compact) return mark;
   return (
     <div>
@@ -51,4 +52,15 @@ export function Brand({ compact = false }: { compact?: boolean }) {
 
 export function Loading() {
   return <div className="auth-shell" role="status" aria-live="polite">Carregando…</div>;
+}
+
+// Navegação de mês: setas pequenas ao lado do nome do mês.
+export function MonthNav({ label, onPrev, onNext }: { label: string; onPrev: () => void; onNext: () => void }) {
+  return (
+    <div className="month-nav">
+      <button className="icon-btn" type="button" onClick={onPrev} aria-label="Mês anterior"><IconChevronLeft /></button>
+      <strong aria-live="polite">{label}</strong>
+      <button className="icon-btn" type="button" onClick={onNext} aria-label="Próximo mês"><IconChevronRight /></button>
+    </div>
+  );
 }

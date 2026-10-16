@@ -1,4 +1,4 @@
-/* FluviFiance — design system v2.2 (§1): azul/turquesa/verde sobre fundo escuro tecnológico.
+/* FluviFinance — design system v2.2 (§1): azul/turquesa/verde sobre fundo escuro tecnológico.
    Contraste: textos verificados para WCAG 2.2 AA (≥ 4,5:1) sobre fundo e superfícies; bordas de
    campos ≥ 3:1. O azul (#3C82F6) é só decorativo (gráficos, brilhos) — não passa AA como texto.
    Estado nunca é codificado só por cor: badges e valores sempre têm texto. */
@@ -301,3 +301,32 @@ a.btn { text-decoration: none; }
   .main { padding-bottom: max(40px, env(safe-area-inset-bottom)); }
   .auth-shell { padding-top: max(16px, env(safe-area-inset-top)); }
 }
+
+/* ---------- ajustes de layout (homologação no celular, 16/10) ---------- */
+/* a grade ocupa a altura da tela, mas as linhas (cabeçalho, conteúdo) não esticam em páginas curtas */
+.app-shell { align-content: start; }
+
+/* botões em linha mantêm o próprio tamanho; barras de ações respiram antes do próximo quadro */
+.row > .btn, .row > a.btn { flex: 0 0 auto; }
+.main > .row, .toolbar { margin-bottom: var(--space); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* opções lado a lado; com muitas opções usar .segmented.grid-2 */
+.segmented { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; }
+.segmented span { padding: 6px 6px; white-space: nowrap; font-size: 0.95rem; }
+.segmented.grid-2 { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.segmented.grid-2 span { white-space: normal; }
+@media (max-width: 380px) { .segmented span { font-size: 0.85rem; padding: 6px 4px; } }
+@media (max-width: 340px) { .segmented span { font-size: 0.78rem; padding: 6px 2px; } }
+
+/* navegação de mês: setas pequenas ao lado do nome do mês */
+.month-nav { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: var(--space); }
+.month-nav strong { min-width: 11ch; text-align: center; }
+.month-nav .icon-btn { min-width: 40px; min-height: 40px; border: 1px solid var(--border-strong); }
+
+/* campos de data/mês/hora no iOS: não passam da largura do quadro */
+.field { min-width: 0; }
+input[type="date"], input[type="month"], input[type="time"] {
+  -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left;
+}
+input::-webkit-date-and-time-value { text-align: left; }

@@ -4,7 +4,7 @@ import { addMonths, businessToday, formatDate, monthLabel, monthRange, monthStar
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Alert, Field, PageTitle, StatusBadge } from "../../components/ui";
+import { Alert, Field, MonthNav, PageTitle, StatusBadge } from "../../components/ui";
 import { rpc, txnDirection, txnStatusLabel, txnTypeLabel, type Category, type Txn } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
 import { useFamilyId } from "../../lib/family";
@@ -200,7 +200,7 @@ export function Transactions() {
   return (
     <>
       <PageTitle>Lançamentos</PageTitle>
-      <div className="row" style={{ alignItems: "center" }}>
+      <div className="toolbar">
         <Link className="btn" to="/lancamentos/novo">Novo lançamento</Link>
         <Link className="btn secondary" to="/cartoes/compra">Compra no cartão</Link>
       </div>
@@ -210,11 +210,7 @@ export function Transactions() {
 
       <section className="card stack" aria-labelledby="periodo">
         <h2 id="periodo" className="visually-hidden">Período e filtros</h2>
-        <div className="row" style={{ alignItems: "center" }}>
-          <button className="btn secondary" type="button" onClick={() => go(-1)} aria-label="Mês anterior">‹</button>
-          <strong style={{ textAlign: "center", textTransform: "capitalize" }} aria-live="polite">{monthLabel(month)}</strong>
-          <button className="btn secondary" type="button" onClick={() => go(1)} aria-label="Próximo mês">›</button>
-        </div>
+        <MonthNav label={monthLabel(month).charAt(0).toUpperCase() + monthLabel(month).slice(1)} onPrev={() => go(-1)} onNext={() => go(1)} />
         <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
           <legend className="muted">Agrupar por</legend>
           <div className="row" style={{ alignItems: "center" }}>

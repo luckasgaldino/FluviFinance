@@ -25,5 +25,8 @@ export default defineConfig({
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] }, testIgnore: /(responsive|privacy-mobile)\.spec\.ts/ },
     { name: "mobile-360", use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true }, testMatch: /(responsive|privacy-mobile)\.spec\.ts/ },
+    // motor do Safari com tela de iPhone: o Chrome em 360 px não reproduz larguras de campos do iOS
+    { name: "iphone-webkit", use: { ...devices["iPhone 13"] }, testMatch: /responsive\.spec\.ts/ },
+    { name: "iphone-se-webkit", use: { ...devices["iPhone SE"] }, testMatch: /responsive\.spec\.ts/ },
   ],
 });

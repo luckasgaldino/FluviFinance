@@ -19,8 +19,14 @@ export async function freshTotp(secret: string): Promise<string> {
 
 export async function login(page: Page, email: string, password: string) {
   await page.goto("/entrar");
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill(password);
+  // no WebKit o formulário pode ser preenchido antes de a página estabilizar (o valor se perde):
+  // confere o que foi digitado antes de enviar
+  const emailBox = page.getByLabel("E-mail");
+  await expect(async () => {
+    await emailBox.fill(email);
+    await page.getByLabel("Senha").fill(password);
+    await expect(emailBox).toHaveValue(email, { timeout: 500 });
+  }).toPass({ timeout: 10_000 });
   await page.getByRole("button", { name: "Entrar" }).click();
 }
 
