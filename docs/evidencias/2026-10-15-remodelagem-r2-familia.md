@@ -72,3 +72,20 @@
 3. pgTAP no hospedado e deploy do frontend (merge na `main`).
 
 Os usuários fictícios existentes ganham, cada um, a própria "Família de \<nome\>".
+
+## Deploy no fluvi-dev (16/10/2026, ~22:25–22:40 BRT)
+
+Autorizado pelo responsável em 15/10/2026 ("Pode seguir, claro… pode executar toda ação que você achar pertinente"). O ambiente tem só dados fictícios.
+
+| Passo | Resultado |
+|---|---|
+| Backup pré-deploy (cifrado) | `2026-10-16T01-27-14-087Z.dump.enc`, 14 migrations |
+| Restauração isolada do backup pré-deploy | **PASS**: fotografia idêntica (67 itens); 312 pgTAP da suíte pré-R2 (`--tests`) |
+| `db push --dry-run` | só `20261017000100_family_ownership.sql` pendente |
+| `db push` | aplicada sem erro |
+| `supabase test db --linked` | **319/319 PASS** |
+| Integridade no hospedado | 2 famílias criadas para os titulares fictícios com dados; nenhum lançamento sem família; EQ-1 ok nos 2 cartões; jobs `fluvi-close-due-cycles` e `fluvi-generate-recurrences` ativos; nenhuma coluna `owner_*` fora de `data_grants` |
+| Conta de teste do responsável (`luck.teste@fluvi.test`, fictícia) | sem dados, portanto sem família após a migração; vinculada a uma nova "Família Teste (fictícia)" para permitir a validação pelo app |
+| Testes remotos (API hospedada, JWT real, TLS verificado) | **10/10 PASS** (auth + finanças por família) |
+| Merge na `main` → deploy do frontend | `deploy-dev` e CI verdes (`d72dd4d`); `/configuracoes` 200 |
+| Backup pós-deploy + restauração isolada | `2026-10-16T01-33-09-923Z.dump.enc`, 15 migrations; **PASS** com 319 pgTAP no restaurado |
