@@ -39,3 +39,17 @@
 | Exercício de restauração | **PASS** (392 pgTAP no restaurado) |
 
 **Observação:** o convite por Edge Function no E2E passou de 10 s uma vez (G4, ver evidência da PWA). A espera desse passo foi para 30 s, com o motivo registrado; o G4 continua aberto, agora mitigado.
+
+## Deploy no fluvi-dev (16/10/2026, ~01:05–01:20 BRT)
+
+Sob a autorização do responsável para executar as ações pertinentes. O ambiente tem só dados fictícios; os vínculos ativos existentes, inclusive o da conta de teste do responsável, continuam ativos e contam como aceitos.
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`f4eb87e`, 38848359642) |
+| Backup pré-deploy + restauração isolada | `2026-10-16T04-06-08-700Z.dump.enc`; **PASS** (384 pgTAP da suíte pré-R5) |
+| `db push` | `20261017000400_member_invited.sql` e `20261017000500_family_invites.sql` aplicadas |
+| `supabase test db --linked` | **392/392 PASS** |
+| Testes remotos | **11/11 PASS** |
+| Merge na `main` → deploy | `deploy-dev` e CI verdes (`f4eb87e`) |
+| Backup pós-deploy + restauração isolada | `2026-10-16T04-15-38-827Z.dump.enc`; **PASS** (392 pgTAP) |
