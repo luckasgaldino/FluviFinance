@@ -91,6 +91,11 @@ const router = createBrowserRouter([
   { path: "*", element: <GateRedirect /> },
 ]);
 
+// PWA instalável: o service worker não guarda cache nem intercepta requisições (public/sw.js).
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => { void navigator.serviceWorker.register("/sw.js"); });
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

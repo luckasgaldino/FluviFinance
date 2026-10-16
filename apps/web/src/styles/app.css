@@ -293,3 +293,11 @@ a.btn { text-decoration: none; }
   background: var(--surface-2); border: 1px solid var(--border); color: var(--teal);
 }
 .unlock form { text-align: left; }
+
+/* PWA no iPhone (barra de status translúcida): respeitar as áreas seguras */
+@supports (padding: max(0px)) {
+  .topbar { padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .drawer-inner { padding-top: max(14px, env(safe-area-inset-top)); padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .main { padding-bottom: max(40px, env(safe-area-inset-bottom)); }
+  .auth-shell { padding-top: max(16px, env(safe-area-inset-top)); }
+}

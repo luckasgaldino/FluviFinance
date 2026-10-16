@@ -376,7 +376,9 @@ enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
 # `per_worker` (default) — enables hot reload during local development.
 # `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
-policy = "per_worker"
+# Fluvi: oneshot — com per_worker o isolate reaproveitado atinge o limite de tempo total e é
+# encerrado no meio de uma requisição (convite intermitente nos E2E, G4). Só local/CI.
+policy = "oneshot"
 # Port to attach the Chrome inspector for debugging edge functions.
 inspector_port = 8093
 # The Deno major version to use.
