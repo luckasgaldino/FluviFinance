@@ -55,3 +55,12 @@ O arquivo foi inspecionado **só na estrutura**: tags, formatos e contagens, com
 - a sugestão de categoria podia sair vazia se o arquivo fosse escolhido antes de as categorias carregarem. Agora ela é calculada com os dados atualizados.
 
 **Deploy:** a execução automatizada de deploy desta branch aplicou no fluvi-dev **as duas migrações** (`…0900` e `…1000`, que já estava pronta na pasta), com backup e restauração antes (`2026-10-16T14-11-38-686Z`, PASS com 437 pgTAP) e **pgTAP hospedado 464/464 PASS**. A publicação do site ficou para depois do commit desta correção.
+
+## Publicação (16/10/2026, ~11:45 BRT)
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`d8d35fc`, 38916296702) |
+| Merge na `main` → deploy | `deploy-dev` e CI verdes (`d8d35fc`) |
+| Banco hospedado | em dia com o repositório (`db push --dry-run`: nada pendente) |
+| Backup pós-deploy + restauração isolada | `2026-10-16T14-46-03-670Z.dump.enc`; **PASS** (464 pgTAP) |
