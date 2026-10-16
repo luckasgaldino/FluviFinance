@@ -389,6 +389,7 @@ export function CardDetail() {
       </section>
       <div className="row" style={{ alignItems: "center" }}>
         <Link className="btn" to={`/cartoes/compra?cartao=${c.id}`}>Nova compra</Link>
+        <Link className="btn secondary" to={`/cartoes/${c.id}/importar`}>Importar fatura</Link>
         {!editing && <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setEditing(true); }}>Editar regras</button>}
         {!opening && <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setOpening(true); }}>Saldo anterior</button>}
       </div>
