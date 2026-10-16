@@ -89,16 +89,17 @@ function UnlockScreen() {
 
 // ---------------------------------------------------------------------------
 // Novo lançamento rápido: grava sem desbloqueio e nunca mostra valores já cadastrados.
+// Despesa é todo custo; a forma de pagamento decide o efeito: conta → sai do caixa agora;
+// cartão → vira dívida da fatura (parcelável), sem sair do caixa até o pagamento.
 // As opções trazem só apelidos (nada de saldo, limite ou final do cartão).
 // ---------------------------------------------------------------------------
-type Kind = "expense" | "income" | "card" | "transfer";
+type Kind = "expense" | "income" | "transfer";
 type Option = { id: string; name: string };
 type QuickOptions = { accounts: Option[]; cards: Option[]; categories: (Option & { kind: "expense" | "income" })[] };
 
 const kinds: { value: Kind; label: string }[] = [
   { value: "expense", label: "Despesa" },
   { value: "income", label: "Receita" },
-  { value: "card", label: "Cartão" },
   { value: "transfer", label: "Transferência" },
 ];
 
@@ -120,16 +121,23 @@ function useQuickOptions(userId: string | undefined) {
   });
 }
 
-function Select({ id, label, name, options, error, placeholder, loading }: {
-  id: string; label: string; name: string; options: Option[]; error?: string; placeholder: string; loading?: boolean;
+type Group = { label?: string; prefix?: string; options: Option[] };
+
+function Select({ id, label, name, groups, error, loading, value, onChange }: {
+  id: string; label: string; name: string; groups: Group[]; error?: string; loading?: boolean;
+  value?: string; onChange?: (v: string) => void;
 }) {
+  const empty = groups.every((g) => g.options.length === 0);
+  const items = (g: Group) => g.options.map((o) => <option key={o.id} value={`${g.prefix ?? ""}${o.id}`}>{o.name}</option>);
+  const control = onChange ? { value: value ?? "", onChange: (e: { target: { value: string } }) => onChange(e.target.value) } : { defaultValue: "" };
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
-      <select id={id} name={name} defaultValue="" aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id}-err` : undefined}>
-        <option value="" disabled>{options.length ? placeholder : loading ? "Carregando…" : "Nenhuma opção cadastrada"}</option>
-        {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      <select id={id} name={name} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-err` : undefined} {...control}>
+        <option value="" disabled>{!empty ? "Escolha…" : loading ? "Carregando…" : "Nenhuma opção cadastrada"}</option>
+        {groups.map((g, i) => (g.label
+          ? g.options.length > 0 && <optgroup key={i} label={g.label}>{items(g)}</optgroup>
+          : items(g)))}
       </select>
       {error && <span id={`${id}-err`} className="hint error-text">{error}</span>}
     </div>
@@ -143,11 +151,13 @@ export function QuickEntry() {
   const [op, setOp] = useState(() => crypto.randomUUID());  // idempotência: repetir o envio não duplica
   const [formKey, setFormKey] = useState(0);
   const [amountText, setAmountText] = useState("");
+  const [payWith, setPayWith] = useState("");  // "acc:<id>" ou "card:<id>"
   const [n, setN] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const amount = parseBRL(amountText);
+  const onCard = kind === "expense" && payWith.startsWith("card:");
   const cats = options.data?.categories.filter((c) => c.kind === (kind === "income" ? "income" : "expense")) ?? [];
 
   const save = useMutation({
@@ -157,6 +167,7 @@ export function QuickEntry() {
       setSaved(kind === "transfer" ? "Transferência registrada." : "Lançamento salvo.");
       setOp(crypto.randomUUID());
       setAmountText("");
+      setPayWith("");
       setN(1);
       setFormKey((k) => k + 1);
     },
@@ -171,9 +182,9 @@ export function QuickEntry() {
     if (amount === null || amount <= 0) next.amount = "Informe um valor maior que zero, no formato 1.234,56.";
     if (kind !== "transfer" && !get("description")) next.description = "Informe uma descrição.";
     if (kind !== "transfer" && !get("category")) next.category = "Escolha uma categoria.";
-    if ((kind === "expense" || kind === "income") && !get("account")) next.account = "Escolha a conta.";
-    if (kind === "card" && !get("card")) next.card = "Escolha o cartão.";
-    if (kind === "card" && !(n >= 1 && n <= 36)) next.n = "Parcelas de 1 a 36.";
+    if (kind === "expense" && !payWith) next.pay = "Escolha a conta ou o cartão.";
+    if (kind === "income" && !get("account")) next.account = "Escolha a conta.";
+    if (onCard && !(n >= 1 && n <= 36)) next.n = "Parcelas de 1 a 36.";
     if (kind === "transfer" && !get("from")) next.from = "Escolha a conta de origem.";
     if (kind === "transfer" && !get("to")) next.to = "Escolha a conta de destino.";
     if (kind === "transfer" && get("from") && get("from") === get("to")) next.to = "Escolha uma conta diferente da origem.";
@@ -183,10 +194,10 @@ export function QuickEntry() {
     if (Object.keys(next).length) return;
     const date = get("date");
     const competence = `${date.slice(0, 7)}-01`;
-    if (kind === "card") {
+    if (onCard) {
       save.mutate({ fn: "create_card_purchase", args: {
-        p_op: op, p_card: get("card"), p_amount_cents: amount, p_installments: n, p_description: get("description"),
-        p_category: get("category"), p_local_date: date, p_competence_month: competence,
+        p_op: op, p_card: payWith.slice("card:".length), p_amount_cents: amount, p_installments: n,
+        p_description: get("description"), p_category: get("category"), p_local_date: date, p_competence_month: competence,
       } });
     } else if (kind === "transfer") {
       save.mutate({ fn: "transfer_funds", args: {
@@ -195,14 +206,17 @@ export function QuickEntry() {
       } });
     } else {
       save.mutate({ fn: "create_transaction", args: {
-        p_op: op, p_owner: me?.user_id, p_type: kind, p_account: get("account"), p_amount_cents: amount,
-        p_description: get("description"), p_category: get("category"), p_local_date: date, p_competence_month: competence,
+        p_op: op, p_owner: me?.user_id, p_type: kind,
+        p_account: kind === "expense" ? payWith.slice("acc:".length) : get("account"),
+        p_amount_cents: amount, p_description: get("description"), p_category: get("category"), p_local_date: date,
+        p_competence_month: competence,
       } });
     }
   }
 
   const accounts = options.data?.accounts ?? [];
-  const parts = kind === "card" && amount && amount > 0 && n >= 1 && n <= 36 ? splitCents(amount, n) : null;
+  const loading = options.isLoading;
+  const parts = onCard && amount && amount > 0 && n >= 1 && n <= 36 ? splitCents(amount, n) : null;
 
   return (
     <>
@@ -225,28 +239,31 @@ export function QuickEntry() {
           autoComplete="off" error={errors.description} />
         <div className="row">
           {kind !== "transfer" && (
-            <Select id="q-category" label="Categoria" name="category" options={cats} error={errors.category} placeholder="Escolha…" loading={options.isLoading} />
+            <Select id="q-category" label="Categoria" name="category" groups={[{ options: cats }]} error={errors.category} loading={loading} />
           )}
-          {(kind === "expense" || kind === "income") && (
-            <Select id="q-account" label="Conta" name="account" options={accounts} error={errors.account} placeholder="Escolha…" loading={options.isLoading} />
+          {kind === "expense" && (
+            <Select id="q-pay" label="Pagar com" name="pay" value={payWith} onChange={setPayWith} error={errors.pay} loading={loading}
+              groups={[{ label: "Contas", prefix: "acc:", options: accounts },
+                { label: "Cartões de crédito", prefix: "card:", options: options.data?.cards ?? [] }]} />
           )}
-          {kind === "card" && (
-            <Select id="q-card" label="Cartão" name="card" options={options.data?.cards ?? []} error={errors.card} placeholder="Escolha…" loading={options.isLoading} />
+          {kind === "income" && (
+            <Select id="q-account" label="Conta" name="account" groups={[{ options: accounts }]} error={errors.account} loading={loading} />
           )}
           {kind === "transfer" && (
             <>
-              <Select id="q-from" label="Da conta" name="from" options={accounts} error={errors.from} placeholder="Escolha…" loading={options.isLoading} />
-              <Select id="q-to" label="Para a conta" name="to" options={accounts} error={errors.to} placeholder="Escolha…" loading={options.isLoading} />
+              <Select id="q-from" label="Da conta" name="from" groups={[{ options: accounts }]} error={errors.from} loading={loading} />
+              <Select id="q-to" label="Para a conta" name="to" groups={[{ options: accounts }]} error={errors.to} loading={loading} />
             </>
           )}
         </div>
         <div className="row">
           <Field label="Data" name="date" type="date" defaultValue={businessToday()} required />
-          {kind === "card" && (
+          {onCard && (
             <Field label="Parcelas" name="n" type="number" min={1} max={36} value={n}
               onChange={(e) => setN(Number(e.target.value))} error={errors.n} />
           )}
         </div>
+        {onCard && <p className="muted">No cartão, a despesa entra na fatura e só sai da conta quando a fatura for paga.</p>}
         {parts && (
           <p className="muted" aria-live="polite">
             {parts.every((p) => p === parts[0]) ? `${n} × ${formatBRL(parts[0])}`

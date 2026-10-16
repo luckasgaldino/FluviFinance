@@ -17,7 +17,7 @@
 - **Privacidade** (`routes/privacy.tsx`, `lib/finance-lock.tsx`):
   - tela inicial discreta (só o CTA);
   - tela "Área financeira protegida" com a mesma senha do login;
-  - lançamento rápido (`/novo`) sem desbloqueio: despesa, receita, compra no cartão (1–36×, prévia de centavos) e transferência. Usa só apelidos e não mostra saldo, limite nem final do cartão;
+  - lançamento rápido (`/novo`) sem desbloqueio: Despesa, Receita e Transferência. Na despesa, o campo "Pagar com" lista contas e cartões; no cartão, a despesa vira dívida da fatura (1–36×, prévia de centavos) e só sai do caixa no pagamento. Usa só apelidos e não mostra saldo, limite nem final do cartão;
   - janela de 15 min renovada apenas por atividade humana em área protegida; bloqueio manual; cache `fin` apagado ao bloquear; `refetchOnWindowFocus` desligado.
 - **Desktop:** o login abre o dashboard já liberado; após 15 min ocioso, pede a senha sem deslogar.
 - **Telas novas com dados fictícios** (`routes/finance/Insights.tsx`, `lib/demo.ts`): Visão geral, Parcelas e Relatórios (CSV), todas com selo "Demonstração". Configurações em `routes/settings.tsx`.
@@ -35,7 +35,7 @@ Outro ponto para a R3: um usuário comum com TOTP opcional cadastrado, ao reaute
 |---|---|
 | Unitários (`pnpm test:unit`) | 33/33 |
 | Build web (`pnpm web:build`) | ok |
-| E2E (`pnpm test:e2e`) | **36/36** (desktop 23, mobile-360 13) |
+| E2E (`pnpm test:e2e`) | **37/37** (desktop 24, mobile-360 13), incluindo despesa paga com cartão pelo lançamento rápido |
 
 **E2E novos:**
 

@@ -90,7 +90,7 @@ test("PRIV-02: novo lançamento com a área bloqueada grava sem mostrar saldo", 
   await page.getByLabel("Valor (R$)").fill("150,00");
   await page.getByLabel("Descrição").fill("Farmácia");
   await page.getByLabel("Categoria").selectOption({ label: "Saúde" });
-  await page.getByLabel("Conta").selectOption({ label: "Banco Privacidade" });
+  await page.getByLabel("Pagar com").selectOption({ label: "Banco Privacidade" });
   await expectAccessible(page);
   const saved = page.waitForResponse((r) => r.url().includes("/rpc/create_transaction"));
   await page.getByRole("button", { name: "Salvar" }).click();

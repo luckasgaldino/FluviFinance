@@ -131,6 +131,25 @@ test("Anulação de compra lançada por engano devolve a dívida", async ({ page
   await expect(page.getByRole("listitem", { name: "Engano" })).toContainText("anulada");
 });
 
+test("Lançamento rápido: despesa paga com cartão vira dívida da fatura, parcelada", async ({ page }) => {
+  await loginUser(page, owner, PASSWORD);
+  await page.getByRole("link", { name: "Novo lançamento" }).first().click();
+  await expect(page.getByRole("heading", { name: "Novo lançamento", level: 1 })).toBeVisible();
+  await page.getByLabel("Valor (R$)").fill("300,00");
+  await page.getByLabel("Descrição").fill("Farmácia no cartão");
+  await page.getByLabel("Categoria").selectOption({ label: "Saúde" });
+  await page.getByLabel("Pagar com").selectOption({ label: "Visa E2E" });
+  await page.getByLabel("Parcelas").fill("3");
+  await expect(page.getByText("3 × R$ 100,00 = R$ 300,00")).toBeVisible();
+  await expect(page.getByText("só sai da conta quando a fatura for paga")).toBeVisible();
+  await expectAccessible(page);
+  await page.getByRole("button", { name: "Salvar" }).click();
+  await expect(page.getByText("Lançamento salvo.")).toBeVisible();
+
+  await page.goto(cardUrl);
+  await expect(position(page, "Dívida total")).toContainText("R$ 1.300,00");   // 1.000 + 300
+});
+
 test("Isolamento: outro titular não abre o cartão nem a compra", async ({ page }) => {
   await loginUser(page, other, PASSWORD);
   await page.goto(cardUrl);
