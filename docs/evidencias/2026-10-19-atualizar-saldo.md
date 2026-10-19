@@ -23,3 +23,14 @@
 | E2E | novo `adjust-flow`: conta aberta hoje, despesa do dia reduz o saldo, ajuste +R$ 350 e para −R$ 50, ajustes listados em Lançamentos, receitas do mês continuam R$ 0 |
 
 **Bateria local:** pgTAP **484/484** (15 arquivos), integração 58/58, E2E **60/60**, unitários 57/57, build e `db lint` sem avisos, restauração **PASS** (484 pgTAP).
+
+## Deploy no fluvi-dev (19/10/2026, ~15:20–15:45 BRT) — ambiente com dados reais
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`b4cc62d`, 39301107075) |
+| Backup pré-deploy (cifrado) + restauração isolada | `2026-10-19T18-23-35-273Z.dump.enc`; **PASS** (464 pgTAP da suíte anterior). Restauração só num container isolado e descartado; nenhum dado foi lido |
+| `db push` | `20261017001100_adjustment_types.sql` e `20261017001200_account_adjustment.sql` |
+| `supabase test db --linked` | **484/484 PASS** (fixtures em transação revertida) |
+| Merge na `main` → deploy | `deploy-dev` e CI verdes (`b4cc62d`) |
+| Backup pós-deploy + restauração isolada | `2026-10-19T18-34-50-816Z.dump.enc`; **PASS** (484 pgTAP) |
