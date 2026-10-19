@@ -78,7 +78,7 @@ function NewAccountForm({ onDone }: { onDone: () => void }) {
         </div>
         <div className="row">
           <Field label="Saldo inicial (R$)" name="opening" inputMode="decimal" defaultValue="0,00"
-            hint="Saldo no fim do dia de abertura. Não conta como receita." />
+            hint="Saldo no início do dia de abertura (os lançamentos desse dia contam). Não conta como receita." />
           <Field label="Data de abertura" name="opening_date" type="date" defaultValue={businessToday()} required />
         </div>
         <Alert kind="error">{error}</Alert>
@@ -91,15 +91,70 @@ function NewAccountForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+// Atualizar saldo (FF-03): o usuário informa o saldo real; a diferença vira um lançamento de
+// ajuste identificado (não é receita nem despesa), que fica no histórico e pode ser anulado.
+export function AdjustBalanceForm({ account, onDone }: { account: AccountBalance; onDone: (msg?: string) => void }) {
+  const queryClient = useQueryClient();
+  const [op] = useState(() => crypto.randomUUID());
+  const [error, setError] = useState("");
+  const adjust = useMutation({
+    mutationFn: (args: Record<string, unknown>) =>
+      rpc<{ status: string; difference_cents: number }>("adjust_account_balance", args),
+    onSuccess: (r) => {
+      void queryClient.invalidateQueries({ queryKey: ["fin"] });
+      const diff = Number(r.difference_cents);
+      onDone(diff === 0 ? "O saldo já era esse; nada foi lançado."
+        : `Saldo atualizado: ajuste de ${diff > 0 ? "+" : "−"}${formatBRL(Math.abs(diff))} em ${account.name}.`);
+    },
+    onError: (e) => setError(errorMessage(e)),
+  });
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const raw = String(f.get("target")).trim();
+    const negative = /^[-−]/.test(raw);
+    const cents = parseBRL(raw.replace(/^[-−]\s*/, ""));
+    if (cents === null) return setError("Informe o saldo no formato 1.234,56 (use − na frente se estiver negativo).");
+    setError("");
+    adjust.mutate({ p_op: op, p_account: account.account_id, p_target_cents: negative ? -cents : cents,
+      p_on: String(f.get("date")), p_note: String(f.get("note") || "").trim() || null });
+  }
+
+  return (
+    <form className="card stack" onSubmit={onSubmit} noValidate aria-label={`Atualizar saldo de ${account.name}`}>
+      <h2>Atualizar saldo — {account.name}</h2>
+      <p className="muted">
+        Saldo atual no app: <Money cents={Number(account.balance_cents)} />. Informe o saldo real (como está no banco); a
+        diferença entra como ajuste de saldo, que não conta como receita nem despesa.
+      </p>
+      <div className="row">
+        <Field label="Saldo real (R$)" name="target" inputMode="decimal" autoComplete="off" placeholder="0,00" required />
+        <Field label="Data" name="date" type="date" defaultValue={businessToday()} required />
+      </div>
+      <Field label="Observação (opcional)" name="note" maxLength={500} />
+      <Alert kind="error">{error}</Alert>
+      <div className="row" style={{ alignItems: "center" }}>
+        <button className="btn" type="submit" disabled={adjust.isPending}>Atualizar saldo</button>
+        <button className="btn secondary" type="button" onClick={() => onDone()}>Cancelar</button>
+      </div>
+    </form>
+  );
+}
+
 export function Accounts() {
   const accounts = useAccounts();
   const [creating, setCreating] = useState(false);
+  const [adjusting, setAdjusting] = useState<AccountBalance | null>(null);
+  const [feedback, setFeedback] = useState("");
 
   return (
     <>
       <PageTitle>Contas</PageTitle>
       {!creating && <div className="toolbar"><button className="btn" type="button" onClick={() => setCreating(true)}>Nova conta</button></div>}
       {creating && <NewAccountForm onDone={() => setCreating(false)} />}
+      {feedback && <Alert kind="success">{feedback}</Alert>}
+      {adjusting && <AdjustBalanceForm account={adjusting} onDone={(msg) => { setAdjusting(null); if (msg) setFeedback(msg); }} />}
       <section className="card stack" aria-labelledby="saldos">
         <h2 id="saldos">Saldos de hoje</h2>
         {accounts.isError && <Alert kind="error">{errorMessage(accounts.error)}</Alert>}
@@ -113,7 +168,14 @@ export function Accounts() {
                   <Link to={`/contas/${a.account_id}`}><strong>{a.name}</strong></Link>
                   <span className="muted">{accountTypeLabel[a.type]}</span>
                 </div>
-                <Money cents={a.balance_cents} />
+                <div className="actions">
+                  <Money cents={a.balance_cents} />
+                  {a.active && (
+                    <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setAdjusting(a); }}>
+                      Atualizar saldo
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -127,6 +189,8 @@ export function Accounts() {
 export function AccountDetail() {
   const { id } = useParams();
   const family = useFamilyId();
+  const [adjusting, setAdjusting] = useState(false);
+  const [feedback, setFeedback] = useState("");
   // só a família ativa: uma conta de outra família do mesmo usuário não aparece aqui
   const account = useQuery({
     queryKey: ["fin", "account", family, id],
@@ -176,7 +240,12 @@ export function AccountDetail() {
         <h2 id="saldo-atual">Saldo de hoje</h2>
         <p className="big"><Money cents={Number(a.balance_cents)} /></p>
         <span className="muted">{accountTypeLabel[a.type]}</span>
+        {!adjusting && a.active && (
+          <div><button className="btn secondary" type="button" onClick={() => { setFeedback(""); setAdjusting(true); }}>Atualizar saldo</button></div>
+        )}
       </section>
+      {feedback && <Alert kind="success">{feedback}</Alert>}
+      {adjusting && <AdjustBalanceForm account={{ ...a, balance_cents: Number(a.balance_cents) }} onDone={(msg) => { setAdjusting(false); if (msg) setFeedback(msg); }} />}
       <section className="card stack" aria-labelledby="extrato">
         <h2 id="extrato">Extrato (data financeira)</h2>
         {entries.data?.length === 0 && <p className="empty">Nenhum movimento após a abertura.</p>}

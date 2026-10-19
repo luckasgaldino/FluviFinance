@@ -1,7 +1,7 @@
 // Privacidade móvel (v2.2 §3.2): tela inicial discreta, novo lançamento rápido sem desbloqueio
 // e confirmação de senha para as áreas financeiras.
 import { businessToday, formatBRL, parseBRL, splitCents } from "@fluvi/domain";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, Outlet } from "react-router";
 import { IconLock, IconPlus } from "../components/icons";
@@ -143,6 +143,7 @@ function Select({ id, label, name, groups, error, loading, value, onChange }: {
 }
 
 export function QuickEntry() {
+  const queryClient = useQueryClient();
   const { active, loading: familyLoading } = useFamily();
   const family = active?.family_id ?? "";
   const options = useQuickOptions(family);
@@ -162,7 +163,9 @@ export function QuickEntry() {
   const save = useMutation({
     mutationFn: ({ fn, args }: { fn: string; args: Record<string, unknown> }) => rpc(fn, args),
     onSuccess: () => {
-      // a resposta traz só o identificador; nada de saldo é exibido
+      // a resposta traz só o identificador; nada de saldo é exibido. As telas financeiras
+      // (se abertas depois) buscam de novo: nada fica com o saldo antigo em cache.
+      void queryClient.invalidateQueries({ queryKey: ["fin"] });
       setSaved(kind === "transfer" ? "Transferência registrada." : "Lançamento salvo.");
       setOp(crypto.randomUUID());
       setAmountText("");

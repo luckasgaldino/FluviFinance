@@ -74,7 +74,8 @@ export type Category = { id: string; name: string; kind: "expense" | "income"; f
 
 export type TxnType =
   | "income" | "expense" | "card_purchase" | "card_bill_payment" | "bill_payment"
-  | "transfer_out" | "transfer_in" | "refund" | "reversal" | "installment_adjustment" | "card_opening_balance";
+  | "transfer_out" | "transfer_in" | "refund" | "reversal" | "installment_adjustment" | "card_opening_balance"
+  | "adjustment_in" | "adjustment_out";
 
 export const txnTypeLabel: Record<TxnType, string> = {
   income: "Receita",
@@ -88,6 +89,8 @@ export const txnTypeLabel: Record<TxnType, string> = {
   reversal: "Reversão",
   installment_adjustment: "Ajuste de parcelas",
   card_opening_balance: "Saldo anterior do cartão",
+  adjustment_in: "Ajuste de saldo",
+  adjustment_out: "Ajuste de saldo",
 };
 
 export const txnStatusLabel: Record<string, string> = { active: "Ativo", voided: "Anulado", reversed: "Revertido" };
@@ -122,6 +125,7 @@ export type LedgerEntry = {
 export const txnDirection: Partial<Record<TxnType, 1 | -1>> = {
   income: 1, transfer_in: 1, refund: 1,
   expense: -1, card_purchase: -1, card_bill_payment: -1, bill_payment: -1, transfer_out: -1,
+  adjustment_in: 1, adjustment_out: -1,
 };
 
 // Cartões (Marco B)
