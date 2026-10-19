@@ -26,3 +26,14 @@
 ### Bateria local completa
 
 pgTAP 498/498 (16 suítes) · integração 58/58 · E2E 61/61 (4 projetos) · unitários 57/57 · build ok · `db lint` sem achados · `backup:drill` PASS (498 no banco restaurado).
+
+## Deploy no fluvi-dev (19/10/2026, ~16:40–16:55 BRT) — ambiente com dados reais
+
+| Passo | Resultado |
+|---|---|
+| CI da branch | verde (`3dc3853`, 39313367667) |
+| Backup pré-deploy (cifrado) + restauração isolada | `2026-10-19T19-44-07-944Z.dump.enc`; **PASS** (484 pgTAP da suíte anterior). Restauração só num container isolado e descartado; nenhum dado foi lido |
+| `db push` | `20261017001300_card_archive.sql` |
+| `supabase test db --linked` | **498/498 PASS** (fixtures em transação revertida) |
+| Merge na `main` → deploy Cloudflare Pages + CI | ambos verdes (39314317813, 39314317602) |
+| Backup pós-deploy + restauração isolada | `2026-10-19T19-50-48-651Z.dump.enc`; **PASS** (498 pgTAP) |
