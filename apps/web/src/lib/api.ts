@@ -140,6 +140,8 @@ export type CardPosition = {
   future_installments_cents: number;
   unapplied_credit_cents: number;
   available_limit_cents: number;
+  /** cartão excluído (arquivado) fica fora das listas */
+  active?: boolean;
 };
 
 export type Card = {

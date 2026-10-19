@@ -26,7 +26,7 @@ const byCode: Record<string, string> = {
 
 // Regras de negócio recusadas pelo banco chegam como 23514 com mensagem em português
 // (sem dados de terceiros): exibidas como estão.
-const businessRule = /^(só |use |compra |operação |esta operação |anule |reverta |estorno|valor acima|crédito |obrigação |transferência |novo total|quantidade |informe |categoria |parcelas |período )/i;
+const businessRule = /^(só |use |compra |operação |esta operação |anule |reverta |estorno|valor acima|crédito |obrigação |transferência |novo total|quantidade |informe |categoria |parcelas |período |cartão )/i;
 
 export function errorMessage(error: unknown): string {
   const e = error as AnyError;

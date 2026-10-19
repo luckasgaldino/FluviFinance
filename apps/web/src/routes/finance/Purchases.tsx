@@ -86,8 +86,8 @@ export function NewPurchase() {
               <label htmlFor="pc-card">Cartão</label>
               <select id="pc-card" value={cardId} onChange={(e) => setCardId(e.target.value)}
                 aria-invalid={errors.card ? true : undefined} aria-describedby={errors.card ? "pc-card-err" : undefined}>
-                <option value="" disabled>{cards.data?.length ? "Escolha…" : "Nenhum cartão cadastrado"}</option>
-                {cards.data?.map((c) => <option key={c.card_id} value={c.card_id}>{c.name}</option>)}
+                <option value="" disabled>{cards.data?.some((c) => c.active !== false) ? "Escolha…" : "Nenhum cartão cadastrado"}</option>
+                {cards.data?.filter((c) => c.active !== false).map((c) => <option key={c.card_id} value={c.card_id}>{c.name}</option>)}
               </select>
               {errors.card && <span id="pc-card-err" className="hint error-text">{errors.card}</span>}
             </div>

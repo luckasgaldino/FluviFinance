@@ -2,7 +2,7 @@
 import { businessToday, formatBRL, formatDate, parseBRL } from "@fluvi/domain";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { Alert, Field, PageTitle, StatusBadge } from "../../components/ui";
 import {
   cycleBadge, cycleLabel, nums, rpc,
@@ -22,9 +22,14 @@ export function useCardPositions() {
     queryKey: ["fin", "card-positions", family],
     enabled: !!family,
     queryFn: async () => {
-      const { data, error } = await supabase.from("v_card_position").select("*").eq("family_id", family).order("name");
-      if (error) throw error;
-      return (data as CardPosition[]).map((p) => nums(p, positionKeys));
+      const [pos, cards] = await Promise.all([
+        supabase.from("v_card_position").select("*").eq("family_id", family).order("name"),
+        supabase.from("credit_cards").select("id, active").eq("family_id", family),
+      ]);
+      if (pos.error) throw pos.error;
+      if (cards.error) throw cards.error;
+      const active = new Map((cards.data ?? []).map((c) => [c.id as string, c.active as boolean]));
+      return (pos.data as CardPosition[]).map((p) => ({ ...nums(p, positionKeys), active: active.get(p.card_id) ?? true }));
     },
   });
 }
@@ -119,7 +124,18 @@ function NewCardForm({ onDone }: { onDone: () => void }) {
 
 export function Cards() {
   const positions = useCardPositions();
+  const queryClient = useQueryClient();
+  const [params] = useSearchParams();
   const [creating, setCreating] = useState(false);
+  const [feedback, setFeedback] = useState(params.get("ok") ?? "");
+  const [error, setError] = useState("");
+  const activeCards = positions.data?.filter((p) => p.active !== false) ?? [];
+  const archived = positions.data?.filter((p) => p.active === false) ?? [];
+  const reactivate = useMutation({
+    mutationFn: (card: string) => rpc("set_card_active", { p_card: card, p_active: true }),
+    onSuccess: () => { setError(""); setFeedback("Cartão reativado."); void queryClient.invalidateQueries({ queryKey: ["fin"] }); },
+    onError: (e) => setError(errorMessage(e)),
+  });
   return (
     <>
       <PageTitle>Cartões</PageTitle>
@@ -128,12 +144,14 @@ export function Cards() {
         <Link className="btn secondary" to="/cartoes/compra">Nova compra no cartão</Link>
       </div>
       {creating && <NewCardForm onDone={() => setCreating(false)} />}
+      {feedback && <Alert kind="success">{feedback}</Alert>}
+      <Alert kind="error">{error}</Alert>
       {positions.isError && <Alert kind="error">{errorMessage(positions.error)}</Alert>}
-      {positions.isLoading ? <p role="status">Carregando…</p> : positions.data?.length === 0 ? (
+      {positions.isLoading ? <p role="status">Carregando…</p> : activeCards.length === 0 ? (
         <p className="empty">Nenhum cartão cadastrado.</p>
       ) : (
         <ul className="list" aria-label="Cartões">
-          {positions.data?.map((p) => (
+          {activeCards.map((p) => (
             <li key={p.card_id} className="list-item" aria-label={p.name}>
               <div className="meta">
                 <Link to={`/cartoes/${p.card_id}`}><strong>{p.name}</strong></Link>
@@ -144,6 +162,21 @@ export function Cards() {
             </li>
           ))}
         </ul>
+      )}
+      {archived.length > 0 && (
+        <section className="card stack section-gap" aria-labelledby="excluidos">
+          <h2 id="excluidos">Cartões excluídos</h2>
+          <p className="muted">Não aparecem nas listas nem no lançamento; o histórico das compras continua guardado.</p>
+          <ul className="list" aria-label="Cartões excluídos">
+            {archived.map((p) => (
+              <li key={p.card_id} className="list-item inactive" aria-label={p.name}>
+                <div className="meta"><strong>{p.name}</strong></div>
+                <button className="btn secondary" type="button" disabled={reactivate.isPending}
+                  onClick={() => reactivate.mutate(p.card_id)}>Reativar</button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </>
   );
@@ -325,6 +358,17 @@ export function CardDetail() {
   const [editing, setEditing] = useState(false);
   const [paying, setPaying] = useState<CardCycle | null>(null);
   const [opening, setOpening] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+  const navigate = useNavigate();
+  const detailClient = useQueryClient();
+  const archive = useMutation({
+    mutationFn: () => rpc("set_card_active", { p_card: id, p_active: false }),
+    onSuccess: () => {
+      void detailClient.invalidateQueries({ queryKey: ["fin"] });
+      navigate(`/cartoes?ok=${encodeURIComponent("Cartão excluído. O histórico das compras continua guardado.")}`);
+    },
+    onError: (e) => setArchiveError(errorMessage(e)),
+  });
   const [feedback, setFeedback] = useState("");
   const family = useFamilyId();
   const card = useQuery({
@@ -390,11 +434,17 @@ export function CardDetail() {
       <div className="row" style={{ alignItems: "center" }}>
         <Link className="btn" to={`/cartoes/compra?cartao=${c.id}`}>Nova compra</Link>
         <Link className="btn secondary" to={`/cartoes/${c.id}/importar`}>Importar fatura</Link>
+        {c.active && (
+          <button className="btn secondary" type="button" disabled={archive.isPending}
+            onClick={() => window.confirm(`Excluir o cartão ${c.name}? Ele sai das listas e do lançamento; o histórico das compras continua guardado.`)
+              && archive.mutate()}>Excluir cartão</button>
+        )}
         {!editing && <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setEditing(true); }}>Editar regras</button>}
         {!opening && <button className="btn secondary" type="button" onClick={() => { setFeedback(""); setOpening(true); }}>Saldo anterior</button>}
       </div>
       {editing && <RulesForm card={c} onDone={(msg) => { setEditing(false); setFeedback(msg); }} />}
       {opening && <OpeningBalanceForm card={c} onDone={(msg) => { setOpening(false); if (msg) setFeedback(msg); }} />}
+      <Alert kind="error">{archiveError}</Alert>
 
       <section className="card stack" aria-labelledby="faturas">
         <h2 id="faturas">Faturas</h2>

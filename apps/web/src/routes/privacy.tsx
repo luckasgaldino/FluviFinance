@@ -113,7 +113,9 @@ function useQuickOptions(family: string) {
   return useQuery({
     queryKey: ["quick", "options", family],
     enabled: !!family,
-    staleTime: 60_000,
+    // sempre atual ao abrir o formulário: contas e cartões criados ou excluídos aparecem na hora
+    staleTime: 0,
+    refetchOnMount: "always",
     // só apelidos, sem saldo, limite ou final do cartão; funciona com a área financeira bloqueada
     queryFn: () => rpc<QuickOptions>("quick_entry_options", { p_family: family }),
   });
